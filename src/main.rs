@@ -1,0 +1,79 @@
+mod assets_tracker;
+mod game;
+mod gameobjects;
+mod sprite_animation;
+
+use bevy::app::AppExit;
+use bevy::asset::AssetMetaCheck;
+use bevy::prelude::*;
+
+use crate::game::game_plugin;
+
+fn main() -> AppExit {
+    App::new().add_plugins(AppPlugin).run()
+}
+
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash, States)]
+pub enum AppState {
+    #[default]
+    Title,
+    Game,
+}
+
+pub struct AppPlugin;
+impl Plugin for AppPlugin {
+    fn build(&self, app: &mut App) {
+        // Add Bevy plugins.
+        app.add_plugins(
+            DefaultPlugins
+                .set(AssetPlugin {
+                    // Wasm builds will check for meta files (that don't exist) if this isn't set.
+                    // This causes errors and even panics on web build on itch.
+                    // See https://github.com/bevyengine/bevy_github_ci_template/issues/48.
+                    meta_check: AssetMetaCheck::Never,
+                    ..Default::default()
+                })
+                .set(WindowPlugin {
+                    primary_window: Window {
+                        title: "Dungeon Slime".to_string(),
+                        fit_canvas_to_parent: true,
+                        ..Default::default()
+                    }
+                    .into(),
+                    ..Default::default()
+                })
+                .set(ImagePlugin::default_nearest()),
+        );
+
+        app.init_state::<AppState>();
+
+        app.add_plugins((assets_tracker::plugin,));
+
+        app.add_plugins((game_plugin, sprite_animation::plugin));
+
+        app.add_systems(Startup, spawn_camera);
+        app.add_systems(
+            Update,
+            (
+                switch_state,
+                #[cfg(feature = "dev")]
+                bevy::dev_tools::states::log_transitions::<AppState>,
+            ),
+        );
+    }
+}
+
+fn spawn_camera(mut command: Commands) {
+    command.spawn((Name::new("Camera"), Camera2d));
+}
+
+fn switch_state(mut next_state: ResMut<NextState<AppState>>, input: Res<ButtonInput<KeyCode>>) {
+    if input.just_pressed(KeyCode::Enter) {
+        NextState::set_if_neq(&mut next_state, AppState::Game);
+        // next_state.set(AppState::Game);
+    }
+
+    if input.just_pressed(KeyCode::Escape) {
+        NextState::set_if_neq(&mut next_state, AppState::Title);
+    }
+}
