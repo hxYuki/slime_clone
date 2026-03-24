@@ -5,19 +5,25 @@ use bevy::{platform::collections::HashMap, prelude::*};
 use crate::{
     AppState,
     assets_tracker::{AssetState, cleanup_resource, load_resource},
-    gameobjects::{Bat, Slime},
+    gameobjects::{Bat, Room, Slime},
 };
 
 pub fn game_plugin(app: &mut App) {
     // Register assets
     // `app.load_resource` will execute on launch, which makes you lose the timing assets are
     // ready. While `init_asset` cannot be called from `World`. So you have initialize the assets here.
-    app.init_asset::<Slime>().init_asset::<Bat>();
+    app.init_asset::<Slime>()
+        .init_asset::<Bat>()
+        .init_asset::<Room>();
 
     // Load Assets
     app.add_systems(
         OnEnter(AppState::Game),
-        (load_resource::<Slime>, load_resource::<Bat>),
+        (
+            load_resource::<Slime>,
+            load_resource::<Bat>,
+            load_resource::<Room>,
+        ),
     );
 
     // Setup game when assets are ready
@@ -35,9 +41,15 @@ pub fn game_plugin(app: &mut App) {
     // Cleanup assets
     app.add_systems(
         OnExit(AppState::Game),
-        (cleanup_resource::<Slime>, cleanup_resource::<Bat>),
+        (
+            cleanup_resource::<Slime>,
+            cleanup_resource::<Bat>,
+            cleanup_resource::<Room>,
+        ),
     );
 }
+
+pub struct GameRegion {}
 
 #[derive(Component)]
 pub struct Velocity(Vec2);
@@ -74,7 +86,12 @@ pub struct Speed(f32);
 #[derive(Component)]
 pub struct Player;
 
-fn setup_game(mut commands: Commands, slime: Res<Slime>, bat: Res<Bat>) {
+fn setup_game(mut commands: Commands, slime: Res<Slime>, bat: Res<Bat>, room: Res<Room>) {
+    commands.spawn((
+        room.bundle(),
+        DespawnOnExit(AppState::Game),
+        Transform::from_scale(Vec3::splat(4.0)),
+    ));
     commands.spawn((
         slime.bundle(),
         Velocity(Vec2::ZERO),

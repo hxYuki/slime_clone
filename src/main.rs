@@ -36,6 +36,8 @@ impl Plugin for AppPlugin {
                 .set(WindowPlugin {
                     primary_window: Window {
                         title: "Dungeon Slime".to_string(),
+                        resizable: false,
+                        resolution: (1280, 720).into(),
                         fit_canvas_to_parent: true,
                         ..Default::default()
                     }
