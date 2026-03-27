@@ -1,6 +1,10 @@
 use std::time::Duration;
 
-use bevy::{platform::collections::HashMap, prelude::*};
+use bevy::{
+    color::palettes::css::{GREEN, RED},
+    platform::collections::HashMap,
+    prelude::*,
+};
 
 use crate::{
     AppState,
@@ -35,7 +39,12 @@ pub fn game_plugin(app: &mut App) {
     // Game logic
     app.add_systems(
         Update,
-        (handle_keyboad_control, update_positions, update_transforms),
+        (
+            handle_keyboad_control,
+            update_positions,
+            update_transforms,
+            collision_check,
+        ),
     );
 
     // Cleanup assets
@@ -49,7 +58,13 @@ pub fn game_plugin(app: &mut App) {
     );
 }
 
-pub struct GameRegion {}
+#[derive(Resource)]
+pub struct GameState {
+    pub player_score: u32,
+    pub room_size: UVec2,
+    pub grid_size: u32,
+    pub room_bound: Rect,
+}
 
 #[derive(Component)]
 pub struct Velocity(Vec2);
@@ -86,28 +101,43 @@ pub struct Speed(f32);
 #[derive(Component)]
 pub struct Player;
 
+#[derive(Component)]
+pub struct Mob;
+
 fn setup_game(mut commands: Commands, slime: Res<Slime>, bat: Res<Bat>, room: Res<Room>) {
+    let bound = Rect::from_center_half_size(Vec2::ZERO, Vec2::new(16. - 2., 9. - 2.) * 20. / 2.);
+    commands.insert_resource(GameState {
+        player_score: 0,
+        room_size: UVec2::new(16, 9),
+        grid_size: 20,
+        room_bound: bound,
+    });
     commands.spawn((
         room.bundle(),
         DespawnOnExit(AppState::Game),
-        Transform::from_scale(Vec3::splat(4.0)),
+        Transform::from_scale(Vec3::splat(1.0)),
     ));
-    commands.spawn((
-        slime.bundle(),
-        Velocity(Vec2::ZERO),
-        Position(Vec2::ZERO),
-        Speed(400.0),
-        Player,
-        DespawnOnExit(AppState::Game),
-    ));
+    commands
+        .spawn((
+            slime.bundle(),
+            Velocity(Vec2::ZERO),
+            Position(Vec2::ZERO),
+            Speed(100.0),
+            Player,
+            DespawnOnExit(AppState::Game),
+        ))
+        .observe(player_score);
 
-    commands.spawn((
-        bat.bundle(),
-        Velocity(Vec2::ZERO),
-        Position(Vec2::new(100.0, 0.0)),
-        Speed(400.0),
-        DespawnOnExit(AppState::Game),
-    ));
+    commands
+        .spawn((
+            bat.bundle(),
+            Velocity(get_random_velocity().normalize() * 100.),
+            Position(Vec2::new(100.0, 0.0)),
+            Speed(100.0),
+            Mob,
+            DespawnOnExit(AppState::Game),
+        ))
+        .observe(mob_relocate);
 }
 
 fn handle_keyboad_control(
@@ -149,4 +179,136 @@ fn update_positions(mut query: Query<(&mut Position, &Velocity)>, time: Res<Time
     for (mut position, velocity) in query.iter_mut() {
         position.0 += velocity.0 * time.delta_secs();
     }
+}
+
+#[derive(EntityEvent)]
+pub struct PlayerScoce(Entity);
+
+#[derive(EntityEvent)]
+pub struct MobDestroyed(Entity);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RoomEdge {
+    Left,
+    Top,
+    Right,
+    Bottom,
+}
+
+fn collision_check(
+    mut commands: Commands,
+    mut player: Query<(Entity, &mut Position, &mut Velocity), (With<Player>, Without<Mob>)>,
+    mut mob: Query<(Entity, &mut Position, &mut Velocity), (With<Mob>, Without<Player>)>,
+
+    game_state: If<Res<GameState>>,
+
+    mut gizmos: Gizmos,
+) {
+    let room_bound = game_state.room_bound;
+
+    let Ok((player, mut player_pos, mut player_vel)) = player.single_mut() else {
+        return;
+    };
+    let player_bound = Rect::from_center_half_size(player_pos.0, Vec2::splat(10.));
+
+    let Ok((mob, mut mob_pos, mut mob_vel)) = mob.single_mut() else {
+        return;
+    };
+    let mob_bound = Rect::from_center_half_size(mob_pos.0, Vec2::splat(10.));
+
+    gizmos.rect_2d(room_bound.center(), room_bound.size(), RED);
+    gizmos.rect_2d(player_bound.center(), player_bound.size(), GREEN);
+    gizmos.rect_2d(mob_bound.center(), mob_bound.size(), GREEN);
+
+    for edge in touch_room_edge(mob_bound, room_bound) {
+        mob_vel.0 = match edge {
+            RoomEdge::Left | RoomEdge::Right => Vec2::new(-mob_vel.x, mob_vel.y),
+            RoomEdge::Top | RoomEdge::Bottom => Vec2::new(mob_vel.x, -mob_vel.y),
+        };
+
+        match edge {
+            RoomEdge::Left => mob_pos.x = f32::max(mob_pos.x, game_state.room_bound.min.x + 10.),
+            RoomEdge::Right => mob_pos.x = f32::min(mob_pos.x, game_state.room_bound.max.x - 10.),
+            RoomEdge::Bottom => mob_pos.y = f32::max(mob_pos.y, game_state.room_bound.min.y + 10.),
+            RoomEdge::Top => mob_pos.y = f32::min(mob_pos.y, game_state.room_bound.max.y - 10.),
+        }
+    }
+
+    for edge in touch_room_edge(player_bound, room_bound) {
+        match edge {
+            RoomEdge::Left => {
+                player_vel.x = f32::max(player_vel.x, 0.);
+                player_pos.x = f32::max(player_pos.x, game_state.room_bound.min.x + 10.)
+            }
+            RoomEdge::Right => {
+                player_vel.x = f32::min(player_vel.x, 0.);
+                player_pos.x = f32::min(player_pos.x, game_state.room_bound.max.x - 10.)
+            }
+            RoomEdge::Bottom => {
+                player_vel.y = f32::max(player_vel.y, 0.);
+                player_pos.y = f32::max(player_pos.y, game_state.room_bound.min.y + 10.)
+            }
+            RoomEdge::Top => {
+                player_vel.y = f32::min(player_vel.y, 0.);
+                player_pos.y = f32::min(player_pos.y, game_state.room_bound.max.y - 10.)
+            }
+        }
+    }
+
+    if !player_bound.intersect(mob_bound).is_empty() {
+        commands.trigger(PlayerScoce(player));
+        commands.trigger(MobDestroyed(mob));
+    }
+
+    fn touch_room_edge(item: Rect, room_bound: Rect) -> Vec<RoomEdge> {
+        let mut touches = Vec::with_capacity(4);
+        if item.min.x <= room_bound.min.x {
+            touches.push(RoomEdge::Left);
+        }
+        if item.min.y <= room_bound.min.y {
+            touches.push(RoomEdge::Bottom);
+        }
+        if item.max.x >= room_bound.max.x {
+            touches.push(RoomEdge::Right);
+        }
+        if item.max.y >= room_bound.max.y {
+            touches.push(RoomEdge::Top);
+        }
+        touches
+    }
+}
+
+fn mob_relocate(
+    mob_destroyed: On<MobDestroyed>,
+    mut mob: Query<(&mut Velocity, &mut Position), With<Mob>>,
+    game_state: Res<GameState>,
+) {
+    let room_bound = game_state.room_bound;
+
+    let (mut mob_vel, mut mob_pos) = mob.get_mut(mob_destroyed.0).unwrap();
+
+    mob_vel.0 = get_random_velocity() * 100.;
+
+    mob_pos.0 = get_random_vec2_in_rect(room_bound.inflate(-10.));
+}
+
+fn get_random_vec2_in_rect(rect: Rect) -> Vec2 {
+    Vec2::new(
+        rand::random::<f32>() * (rect.max.x - rect.min.x) + rect.min.x,
+        rand::random::<f32>() * (rect.max.y - rect.min.y) + rect.min.y,
+    )
+}
+fn get_random_velocity() -> Vec2 {
+    let r = rand::random::<f32>();
+    info!("random velocity: {}", r);
+    Vec2::new(
+        f32::cos(r * std::f32::consts::TAU),
+        f32::sin(r * std::f32::consts::TAU),
+    )
+    .normalize()
+}
+
+fn player_score(player_score: On<PlayerScoce>, mut game_state: ResMut<GameState>) {
+    info!("{} player score", player_score.0);
+    game_state.player_score += 1;
 }

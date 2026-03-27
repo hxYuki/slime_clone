@@ -66,7 +66,13 @@ impl Plugin for AppPlugin {
 }
 
 fn spawn_camera(mut command: Commands) {
-    command.spawn((Name::new("Camera"), Camera2d));
+    let mut projection = OrthographicProjection::default_2d();
+    projection.scale = 0.25;
+    command.spawn((
+        Name::new("Camera"),
+        Camera2d,
+        Projection::Orthographic(projection),
+    ));
 }
 
 fn switch_state(mut next_state: ResMut<NextState<AppState>>, input: Res<ButtonInput<KeyCode>>) {

@@ -23,7 +23,7 @@ impl Bat {
                 }),
                 ..default()
             },
-            Transform::from_scale(Vec3::splat(4.0)).with_translation(Vec3::new(100.0, 0.0, 0.0)),
+            Transform::from_scale(Vec3::splat(1.0)).with_translation(Vec3::new(100.0, 0.0, 0.0)),
             AnimationCollection::new(self.animations.clone(), Some("idle".to_string())),
         )
     }

@@ -23,7 +23,7 @@ impl Slime {
                 }),
                 ..default()
             },
-            Transform::from_scale(Vec3::splat(4.0)).with_translation(Vec3::new(0.0, 0.0, 0.0)),
+            Transform::from_scale(Vec3::splat(1.0)).with_translation(Vec3::new(0.0, 0.0, 0.0)),
             AnimationCollection::new(self.animations.clone(), Some("idle".to_string())),
         )
     }
@@ -35,7 +35,8 @@ impl FromWorld for Slime {
 
         let mut texture_atlas_layouts = world.resource_mut::<Assets<TextureAtlasLayout>>();
 
-        let layout = TextureAtlasLayout::from_grid(UVec2::splat(20), 1, 2, None, None);
+        let layout =
+            TextureAtlasLayout::from_grid(UVec2::splat(19), 1, 2, Some(UVec2::splat(1)), None);
         let layout = texture_atlas_layouts.add(layout);
 
         Self {
