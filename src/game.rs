@@ -9,6 +9,7 @@ use bevy::{
 use crate::{
     AppState,
     assets_tracker::{AssetState, cleanup_resource, load_resource},
+    audio::{music, sound_effect},
     gameobjects::{Bat, Room, Slime},
 };
 
@@ -16,19 +17,13 @@ pub fn game_plugin(app: &mut App) {
     // Register assets
     // `app.load_resource` will execute on launch, which makes you lose the timing assets are
     // ready. While `init_asset` cannot be called from `World`. So you have initialize the assets here.
-    app.init_asset::<Slime>()
+    app.init_asset::<LevelAssets>()
         .init_asset::<Bat>()
+        .init_asset::<Slime>()
         .init_asset::<Room>();
 
     // Load Assets
-    app.add_systems(
-        OnEnter(AppState::Game),
-        (
-            load_resource::<Slime>,
-            load_resource::<Bat>,
-            load_resource::<Room>,
-        ),
-    );
+    app.add_systems(OnEnter(AppState::Game), (load_resource::<LevelAssets>,));
 
     // Setup game when assets are ready
     app.add_systems(
@@ -48,14 +43,7 @@ pub fn game_plugin(app: &mut App) {
     );
 
     // Cleanup assets
-    app.add_systems(
-        OnExit(AppState::Game),
-        (
-            cleanup_resource::<Slime>,
-            cleanup_resource::<Bat>,
-            cleanup_resource::<Room>,
-        ),
-    );
+    app.add_systems(OnExit(AppState::Game), (cleanup_resource::<LevelAssets>,));
 }
 
 #[derive(Resource)]
@@ -64,6 +52,50 @@ pub struct GameState {
     pub room_size: UVec2,
     pub grid_size: u32,
     pub room_bound: Rect,
+}
+
+#[derive(Asset, Resource, Clone, Reflect)]
+#[reflect(Resource)]
+struct LevelAssets {
+    #[dependency]
+    bat: Bat,
+    #[dependency]
+    slime: Slime,
+    #[dependency]
+    room: Room,
+    #[dependency]
+    theme_music: Handle<AudioSource>,
+    #[dependency]
+    bounce_sound: Handle<AudioSource>,
+    #[dependency]
+    collect_sound: Handle<AudioSource>,
+}
+
+impl FromWorld for LevelAssets {
+    fn from_world(world: &mut World) -> Self {
+        let bat = Bat::from_world(world);
+        let slime = Slime::from_world(world);
+        let room = Room::from_world(world);
+
+        let asset_server = world.resource::<AssetServer>();
+
+        // let bat = asset_server.add(bat);
+        // let slime = asset_server.add(slime);
+        // let room = asset_server.add(room);
+
+        let theme_music = asset_server.load("audio/music/theme.ogg");
+        let bounce_sound = asset_server.load("audio/sound_effects/bounce.wav");
+        let collect_sound = asset_server.load("audio/sound_effects/collect.wav");
+
+        Self {
+            bat,
+            slime,
+            room,
+            theme_music,
+            bounce_sound,
+            collect_sound,
+        }
+    }
 }
 
 #[derive(Component)]
@@ -104,7 +136,7 @@ pub struct Player;
 #[derive(Component)]
 pub struct Mob;
 
-fn setup_game(mut commands: Commands, slime: Res<Slime>, bat: Res<Bat>, room: Res<Room>) {
+fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
     let bound = Rect::from_center_half_size(Vec2::ZERO, Vec2::new(16. - 2., 9. - 2.) * 20. / 2.);
     commands.insert_resource(GameState {
         player_score: 0,
@@ -112,6 +144,14 @@ fn setup_game(mut commands: Commands, slime: Res<Slime>, bat: Res<Bat>, room: Re
         grid_size: 20,
         room_bound: bound,
     });
+    let room = &level.room;
+    let slime = &level.slime;
+    let bat = &level.bat;
+    commands.spawn((
+        music(level.theme_music.clone()),
+        DespawnOnExit(AppState::Game),
+    ));
+
     commands.spawn((
         room.bundle(),
         DespawnOnExit(AppState::Game),
@@ -201,6 +241,7 @@ fn collision_check(
     mut mob: Query<(Entity, &mut Position, &mut Velocity), (With<Mob>, Without<Player>)>,
 
     game_state: If<Res<GameState>>,
+    level_assets: If<Res<LevelAssets>>,
 
     mut gizmos: Gizmos,
 ) {
@@ -220,7 +261,11 @@ fn collision_check(
     gizmos.rect_2d(player_bound.center(), player_bound.size(), GREEN);
     gizmos.rect_2d(mob_bound.center(), mob_bound.size(), GREEN);
 
+    let mut play_bounce_sound = false;
+
     for edge in touch_room_edge(mob_bound, room_bound) {
+        play_bounce_sound = true;
+
         mob_vel.0 = match edge {
             RoomEdge::Left | RoomEdge::Right => Vec2::new(-mob_vel.x, mob_vel.y),
             RoomEdge::Top | RoomEdge::Bottom => Vec2::new(mob_vel.x, -mob_vel.y),
@@ -255,9 +300,15 @@ fn collision_check(
         }
     }
 
+    if play_bounce_sound {
+        commands.spawn(sound_effect(level_assets.bounce_sound.clone()));
+    }
+
     if !player_bound.intersect(mob_bound).is_empty() {
         commands.trigger(PlayerScoce(player));
         commands.trigger(MobDestroyed(mob));
+
+        commands.spawn(sound_effect(level_assets.collect_sound.clone()));
     }
 
     fn touch_room_edge(item: Rect, room_bound: Rect) -> Vec<RoomEdge> {

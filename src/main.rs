@@ -1,4 +1,5 @@
 mod assets_tracker;
+mod audio;
 mod game;
 mod gameobjects;
 mod sprite_animation;
@@ -49,7 +50,7 @@ impl Plugin for AppPlugin {
 
         app.init_state::<AppState>();
 
-        app.add_plugins((assets_tracker::plugin,));
+        app.add_plugins((assets_tracker::plugin, audio::plugin));
 
         app.add_plugins((game_plugin, sprite_animation::plugin));
 
