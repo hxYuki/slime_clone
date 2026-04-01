@@ -13,6 +13,8 @@ use crate::{
     gameobjects::{Bat, Room, Slime},
 };
 
+const BASE_MOVE_SPEED: f32 = 100.0;
+
 pub fn game_plugin(app: &mut App) {
     // Register assets
     // `app.load_resource` will execute on launch, which makes you lose the timing assets are
@@ -99,15 +101,15 @@ impl FromWorld for LevelAssets {
 }
 
 #[derive(Component)]
-pub struct Velocity(Vec2);
-impl std::ops::Deref for Velocity {
+pub struct VelocityDir(Vec2);
+impl std::ops::Deref for VelocityDir {
     type Target = Vec2;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
-impl std::ops::DerefMut for Velocity {
+impl std::ops::DerefMut for VelocityDir {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -160,7 +162,7 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
     commands
         .spawn((
             slime.bundle(),
-            Velocity(Vec2::ZERO),
+            VelocityDir(Vec2::ZERO),
             Position(Vec2::ZERO),
             Speed(100.0),
             Player,
@@ -171,7 +173,7 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
     commands
         .spawn((
             bat.bundle(),
-            Velocity(get_random_velocity().normalize() * 100.),
+            VelocityDir(get_random_velocity().normalize()),
             Position(Vec2::new(100.0, 0.0)),
             Speed(100.0),
             Mob,
@@ -182,14 +184,16 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
 
 fn handle_keyboad_control(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(&mut Velocity, &mut Speed), With<Player>>,
+    mut query: Query<(&mut VelocityDir, &mut Speed), With<Player>>,
 ) {
-    for (mut velocity, speed) in query.iter_mut() {
+    for (mut velocity, mut speed) in query.iter_mut() {
         let mut direction = Vec2::ZERO;
-        let mut speed = speed.0;
+        let mut move_speed = BASE_MOVE_SPEED;
         if keyboard_input.pressed(KeyCode::Space) {
-            speed *= 1.5;
+            move_speed *= 1.5;
         }
+
+        speed.0 = move_speed;
 
         if keyboard_input.pressed(KeyCode::KeyW) {
             direction.y += 1.0;
@@ -204,7 +208,7 @@ fn handle_keyboad_control(
             direction.x += 1.0;
         }
 
-        velocity.0 = direction.normalize_or_zero() * speed;
+        velocity.0 = direction.normalize_or_zero();
     }
 }
 
@@ -215,9 +219,9 @@ fn update_transforms(mut query: Query<(&mut Transform, &Position)>) {
     }
 }
 
-fn update_positions(mut query: Query<(&mut Position, &Velocity)>, time: Res<Time>) {
-    for (mut position, velocity) in query.iter_mut() {
-        position.0 += velocity.0 * time.delta_secs();
+fn update_positions(mut query: Query<(&mut Position, &VelocityDir, &Speed)>, time: Res<Time>) {
+    for (mut position, velocity, speed) in query.iter_mut() {
+        position.0 += velocity.0 * speed.0 * time.delta_secs();
     }
 }
 
@@ -237,8 +241,8 @@ pub enum RoomEdge {
 
 fn collision_check(
     mut commands: Commands,
-    mut player: Query<(Entity, &mut Position, &mut Velocity), (With<Player>, Without<Mob>)>,
-    mut mob: Query<(Entity, &mut Position, &mut Velocity), (With<Mob>, Without<Player>)>,
+    mut player: Query<(Entity, &mut Position, &mut VelocityDir), (With<Player>, Without<Mob>)>,
+    mut mob: Query<(Entity, &mut Position, &mut VelocityDir), (With<Mob>, Without<Player>)>,
 
     game_state: If<Res<GameState>>,
     level_assets: If<Res<LevelAssets>>,
@@ -331,14 +335,14 @@ fn collision_check(
 
 fn mob_relocate(
     mob_destroyed: On<MobDestroyed>,
-    mut mob: Query<(&mut Velocity, &mut Position), With<Mob>>,
+    mut mob: Query<(&mut VelocityDir, &mut Position), With<Mob>>,
     game_state: Res<GameState>,
 ) {
     let room_bound = game_state.room_bound;
 
     let (mut mob_vel, mut mob_pos) = mob.get_mut(mob_destroyed.0).unwrap();
 
-    mob_vel.0 = get_random_velocity() * 100.;
+    mob_vel.0 = get_random_velocity();
 
     mob_pos.0 = get_random_vec2_in_rect(room_bound.inflate(-10.));
 }
@@ -351,7 +355,6 @@ fn get_random_vec2_in_rect(rect: Rect) -> Vec2 {
 }
 fn get_random_velocity() -> Vec2 {
     let r = rand::random::<f32>();
-    info!("random velocity: {}", r);
     Vec2::new(
         f32::cos(r * std::f32::consts::TAU),
         f32::sin(r * std::f32::consts::TAU),
