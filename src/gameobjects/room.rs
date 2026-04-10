@@ -17,10 +17,7 @@ pub struct Room {
 impl FromWorld for Room {
     fn from_world(world: &mut World) -> Self {
         let asset_server = world.resource::<AssetServer>();
-        let tileset = asset_server.load(
-            "images/tileset.png"
-            
-        );
+        let tileset = asset_server.load("images/tileset.png");
 
         let tile_data = vec![
             00, 01, 02, 01, 02, 01, 02, 01, 02, 01, 02, 01, 02, 01, 02, 03, //

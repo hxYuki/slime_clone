@@ -1,9 +1,12 @@
 use std::time::Duration;
 
 use bevy::{
-    color::palettes::css::{GREEN, RED},
+    color::palettes::css::{GREEN, RED, WHITE},
+    ecs::template::template,
+    input::gamepad::{GamepadRumbleIntensity, GamepadRumbleRequest},
     platform::collections::HashMap,
     prelude::*,
+    scene2::{CommandsSceneExt, Scene, bsn, on},
 };
 
 use crate::{
@@ -11,6 +14,7 @@ use crate::{
     assets_tracker::{AssetState, cleanup_resource, load_resource},
     audio::{music, sound_effect},
     gameobjects::{Bat, Room, Slime},
+    ui::ui_root_despawn_on_exit,
 };
 
 const BASE_MOVE_SPEED: f32 = 100.0;
@@ -38,6 +42,7 @@ pub fn game_plugin(app: &mut App) {
         Update,
         (
             handle_keyboad_control,
+            handle_gamepad_control,
             update_positions,
             update_transforms,
             collision_check,
@@ -71,6 +76,8 @@ struct LevelAssets {
     bounce_sound: Handle<AudioSource>,
     #[dependency]
     collect_sound: Handle<AudioSource>,
+    #[dependency]
+    score_font: Handle<Font>,
 }
 
 impl FromWorld for LevelAssets {
@@ -89,6 +96,8 @@ impl FromWorld for LevelAssets {
         let bounce_sound = asset_server.load("audio/sound_effects/bounce.wav");
         let collect_sound = asset_server.load("audio/sound_effects/collect.wav");
 
+        let score_font = asset_server.load("fonts/04B_30.ttf");
+
         Self {
             bat,
             slime,
@@ -96,6 +105,7 @@ impl FromWorld for LevelAssets {
             theme_music,
             bounce_sound,
             collect_sound,
+            score_font,
         }
     }
 }
@@ -154,6 +164,14 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
         DespawnOnExit(AppState::Game),
     ));
 
+    commands.spawn_scene(bsn! {
+        ui_root_despawn_on_exit(AppState::Game)
+
+        Children [
+            score_text()
+        ]
+    });
+
     commands.spawn((
         room.bundle(),
         DespawnOnExit(AppState::Game),
@@ -182,6 +200,45 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
         .observe(mob_relocate);
 }
 
+fn score_text() -> impl Scene {
+    bsn! {
+    (
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            position_type: PositionType::Absolute,
+            top: px(20),
+            left: px(80),
+        }
+
+        Text::new("Score: ")
+        TextColor(WHITE)
+        template(|context| {
+            Ok(TextFont {
+                font: context.resource::<LevelAssets>().score_font.clone().into(),
+                font_size: 35.0.into(),
+                ..default()
+            })
+        })
+
+        Children [
+        (
+            ScoreText
+            TextSpan::new("0")
+            template(|context| {
+                Ok(TextFont {
+                    font: context.resource::<LevelAssets>().score_font.clone().into(),
+                    font_size: 35.0.into(),
+                    ..default()
+                })
+            })
+        )]
+    )}
+}
+
+#[derive(Component, FromTemplate)]
+struct ScoreText;
+
 fn handle_keyboad_control(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut query: Query<(&mut VelocityDir, &mut Speed), With<Player>>,
@@ -209,6 +266,41 @@ fn handle_keyboad_control(
         }
 
         velocity.0 = direction.normalize_or_zero();
+    }
+}
+
+fn handle_gamepad_control(
+    gamepads: Query<(Entity, &Gamepad)>,
+    mut rumble_requests: MessageWriter<GamepadRumbleRequest>,
+    mut player: Query<(&mut VelocityDir, &mut Speed), With<Player>>,
+) {
+    for (entity, gamepad) in gamepads.iter() {
+        info_once!("Gamepad {:?} is connected", gamepad);
+
+        let vel_dir = gamepad.left_stick();
+        let boost = gamepad.pressed(GamepadButton::South);
+
+        let Some((mut velocity, mut speed)) = player.iter_mut().next() else {
+            continue;
+        };
+
+        // Death zone
+        velocity.0 = if vel_dir.length_squared() > 0.01 {
+            vel_dir
+        } else {
+            Vec2::ZERO
+        };
+        speed.0 = BASE_MOVE_SPEED
+            * if boost {
+                rumble_requests.write(GamepadRumbleRequest::Add {
+                    duration: Duration::from_secs_f32(0.1),
+                    intensity: GamepadRumbleIntensity::strong_motor(0.01),
+                    gamepad: entity,
+                });
+                1.5
+            } else {
+                1.0
+            };
     }
 }
 
@@ -246,8 +338,7 @@ fn collision_check(
 
     game_state: If<Res<GameState>>,
     level_assets: If<Res<LevelAssets>>,
-
-    mut gizmos: Gizmos,
+    // mut gizmos: Gizmos,
 ) {
     let room_bound = game_state.room_bound;
 
@@ -261,9 +352,9 @@ fn collision_check(
     };
     let mob_bound = Rect::from_center_half_size(mob_pos.0, Vec2::splat(10.));
 
-    gizmos.rect_2d(room_bound.center(), room_bound.size(), RED);
-    gizmos.rect_2d(player_bound.center(), player_bound.size(), GREEN);
-    gizmos.rect_2d(mob_bound.center(), mob_bound.size(), GREEN);
+    // gizmos.rect_2d(room_bound.center(), room_bound.size(), RED);
+    // gizmos.rect_2d(player_bound.center(), player_bound.size(), GREEN);
+    // gizmos.rect_2d(mob_bound.center(), mob_bound.size(), GREEN);
 
     let mut play_bounce_sound = false;
 
@@ -362,7 +453,26 @@ fn get_random_velocity() -> Vec2 {
     .normalize()
 }
 
-fn player_score(player_score: On<PlayerScoce>, mut game_state: ResMut<GameState>) {
+fn player_score(
+    player_score: On<PlayerScoce>,
+    mut game_state: ResMut<GameState>,
+    mut query: Query<&mut TextSpan, With<ScoreText>>,
+) {
     info!("{} player score", player_score.0);
     game_state.player_score += 1;
+
+    let Ok(mut text) = query.single_mut() else {
+        return;
+    };
+    **text = (game_state.player_score * 100).to_string();
+}
+
+fn update_score_text(
+    game_state: If<Res<GameState>>,
+    mut query: Query<&mut TextSpan, With<ScoreText>>,
+) {
+    let Ok(mut text) = query.single_mut() else {
+        return;
+    };
+    **text = game_state.player_score.to_string();
 }

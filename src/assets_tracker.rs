@@ -9,11 +9,11 @@ pub(super) fn plugin(app: &mut App) {
         .init_state::<AssetState>();
     app.add_systems(PreUpdate, (load_resource_assets, check_load_states));
 
-    #[cfg(feature = "dev")]
-    app.add_systems(
-        Update,
-        bevy::dev_tools::states::log_transitions::<AssetState>,
-    );
+    // #[cfg(feature = "dev")]
+    // app.add_systems(
+    //     Update,
+    //     bevy::dev_tools::states::log_transitions::<AssetState>,
+    // );
 }
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]

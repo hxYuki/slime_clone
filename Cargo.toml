@@ -6,7 +6,7 @@ edition = "2024"
 
 [dependencies]
 # Use only features needed for a 2D game to improve compile time and size
-bevy = { path = "../bevy", default-features = false, features = ["2d","wav"] }
+bevy = { path = "../bevy", default-features = false, features = ["2d","audio-all-formats", "ui"] }
 rand = "0.9"
 # Compile out low-severity logs to improve performance.
 # Remove these features if you want to profile your game with tracy.
@@ -25,7 +25,7 @@ default = ["dev_native"]
 dev = [
     # Improve compile times for dev builds by linking Bevy as a dynamic library.
     "bevy/dynamic_linking",
-    "bevy/bevy_dev_tools",
+    # "bevy/bevy_dev_tools",
     "bevy/bevy_ui_debug",
     # Improve error messages coming from Bevy
     "bevy/track_location",
