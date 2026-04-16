@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::{
     asset::HandleTemplate,
     ecs::template::template,
@@ -7,6 +9,8 @@ use bevy::{
     text::FontSourceTemplate,
     ui::widget::ImageNodeTemplate,
 };
+
+use crate::sprite_animation::{AnimationCollection, AnimationConfig};
 
 pub fn title_ui() -> impl Scene {
     bsn! {
@@ -37,6 +41,9 @@ pub fn title_ui() -> impl Scene {
                     (
                         Text::new("Slime")
                         font_04B_30(130.0)
+                        Node {
+                            margin: UiRect::top(px(-40.0))
+                        }
                     )
 
                 ]
@@ -70,7 +77,7 @@ pub fn button_text_style() -> impl Scene {
     TextColor(Color::srgba_u8(7,14,120,255))
     TextLayout::new_with_justify(Justify::Center)
     Node {
-        margin: UiRect::axes(px(30.0), px(2.0)),
+        margin: UiRect::axes(px(35.0), px(5.0)),
     }
     font_04B_30(25.0)
     }
@@ -82,11 +89,19 @@ pub fn styled_button(children: impl SceneList) -> impl Scene {
         ..default()
     };
 
-    let texture_atlas = TextureAtlasLayout::from_grid(UVec2::new(65, 13), 1, 3, None, None);
+    let texture_atlas =
+        TextureAtlasLayout::from_grid(UVec2::new(65, 14), 1, 3, Some(UVec2::new(0, 1)), None);
+
+    let animations = [
+        AnimationConfig::new("default".into(), 0..1, Duration::from_millis(300)),
+        AnimationConfig::new("focused".into(), 1..3, Duration::from_millis(300)),
+    ];
 
     bsn! {
         Button
         image_node_with_texture_atlas("images/button.png", texture_atlas, NodeImageMode::Sliced(slicer))
+
+        template(move |_| Ok(AnimationCollection::new(animations.clone(), Some("default".into()))))
 
         Node{
             // padding: UiRect::axes(px(10.0), px(5.0)),
