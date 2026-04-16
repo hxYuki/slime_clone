@@ -704,6 +704,7 @@ dependencies = [
  "bevy_platform",
  "bevy_reflect",
  "bevy_render",
+ "bevy_scene",
  "bevy_shader",
  "bevy_text",
  "bevy_ui",
@@ -876,7 +877,6 @@ dependencies = [
  "bevy_reflect",
  "bevy_render",
  "bevy_scene",
- "bevy_scene2",
  "bevy_shader",
  "bevy_sprite",
  "bevy_sprite_render",
@@ -891,6 +891,7 @@ dependencies = [
  "bevy_utils",
  "bevy_window",
  "bevy_winit",
+ "bevy_world_serialization",
 ]
 
 [[package]]
@@ -1238,32 +1239,12 @@ version = "0.19.0-dev"
 dependencies = [
  "bevy_app",
  "bevy_asset",
- "bevy_camera",
- "bevy_derive",
- "bevy_ecs",
- "bevy_platform",
- "bevy_reflect",
- "bevy_transform",
- "bevy_utils",
- "derive_more",
- "ron",
- "serde",
- "thiserror 2.0.17",
- "uuid",
-]
-
-[[package]]
-name = "bevy_scene2"
-version = "0.19.0-dev"
-dependencies = [
- "bevy_app",
- "bevy_asset",
  "bevy_derive",
  "bevy_ecs",
  "bevy_log",
  "bevy_platform",
  "bevy_reflect",
- "bevy_scene2_macros",
+ "bevy_scene_macros",
  "bevy_utils",
  "thiserror 2.0.17",
  "tracing",
@@ -1271,7 +1252,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bevy_scene2_macros"
+name = "bevy_scene_macros"
 version = "0.19.0-dev"
 dependencies = [
  "bevy_macro_utils",
@@ -1591,6 +1572,26 @@ dependencies = [
  "web-sys",
  "wgpu-types",
  "winit",
+]
+
+[[package]]
+name = "bevy_world_serialization"
+version = "0.19.0-dev"
+dependencies = [
+ "bevy_app",
+ "bevy_asset",
+ "bevy_camera",
+ "bevy_derive",
+ "bevy_ecs",
+ "bevy_platform",
+ "bevy_reflect",
+ "bevy_transform",
+ "bevy_utils",
+ "derive_more",
+ "ron",
+ "serde",
+ "thiserror 2.0.17",
+ "uuid",
 ]
 
 [[package]]
@@ -4639,9 +4640,9 @@ dependencies = [
 
 [[package]]
 name = "taffy"
-version = "0.9.2"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41ba83ebaf2954d31d05d67340fd46cebe99da2b7133b0dd68d70c65473a437b"
+checksum = "aea22054047c16c3f34d3ac473a2170be1424b1115b2a3adcf28cfb067c88859"
 dependencies = [
  "arrayvec",
  "grid",

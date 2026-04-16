@@ -6,7 +6,7 @@ use bevy::{
     input::gamepad::{GamepadRumbleIntensity, GamepadRumbleRequest},
     platform::collections::HashMap,
     prelude::*,
-    scene2::{CommandsSceneExt, Scene, bsn, on},
+    scene::{CommandsSceneExt, Scene, bsn, on},
 };
 
 use crate::{

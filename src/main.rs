@@ -9,7 +9,7 @@ use bevy::app::AppExit;
 use bevy::asset::AssetMetaCheck;
 use bevy::ecs::template::template;
 use bevy::prelude::*;
-use bevy::scene2::{CommandsSceneExt, bsn};
+use bevy::scene::{CommandsSceneExt, bsn};
 
 use crate::game::game_plugin;
 use crate::ui::ui_root_despawn_on_exit;

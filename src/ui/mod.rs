@@ -2,11 +2,13 @@ mod title;
 
 use bevy::{
     ecs::template::template,
-    scene2::{Scene, bsn},
+    scene::{Scene, bsn},
     state::{state::States, state_scoped::DespawnOnExit},
     ui::{Node, percent},
 };
 pub use title::*;
+
+use crate::AppState;
 
 pub fn ui_root() -> impl Scene {
     bsn! {
@@ -17,9 +19,9 @@ pub fn ui_root() -> impl Scene {
     }
 }
 
-pub fn ui_root_despawn_on_exit<S: States>(state: S) -> impl Scene {
+pub fn ui_root_despawn_on_exit<S: States + Default + Clone + Unpin>(state: S) -> impl Scene {
     bsn! {
         ui_root()
-        template(move |_| Ok(DespawnOnExit(state.clone())))
+        DespawnOnExit<S>({state.clone()})
     }
 }
