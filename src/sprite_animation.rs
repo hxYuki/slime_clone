@@ -3,7 +3,7 @@ use std::time::Duration;
 use bevy::{platform::collections::HashMap, prelude::*};
 
 pub(super) fn plugin(app: &mut App) {
-    app.add_systems(Update, update_animation);
+    app.add_systems(Update, (update_animation, update_animation_image_node));
 }
 
 #[derive(Clone, Reflect)]
@@ -81,4 +81,28 @@ fn update_animation(mut query: Query<(&mut Sprite, &mut AnimationCollection)>, t
                 animation.get_next_index(sprite.texture_atlas.as_ref().unwrap().index);
         }
     });
+}
+
+fn update_animation_image_node(
+    mut query: Query<(&mut ImageNode, &mut AnimationCollection)>,
+    time: Res<Time>,
+) {
+    query
+        .iter_mut()
+        .for_each(|(mut image_node, mut collection)| {
+            collection.ensure_animation();
+            let cur = collection.get_current_animation().interval;
+
+            if collection.timer.duration() != cur {
+                collection.timer.set_duration(cur);
+            }
+
+            collection.timer.tick(time.delta());
+
+            if collection.timer.just_finished() {
+                let animation = collection.get_current_animation();
+                image_node.texture_atlas.as_mut().unwrap().index =
+                    animation.get_next_index(image_node.texture_atlas.as_ref().unwrap().index);
+            }
+        });
 }
