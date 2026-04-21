@@ -17,14 +17,11 @@ pub fn title_ui() -> impl Scene {
         Node {
             width: percent(100.0),
             height: percent(100.0),
-
             flex_direction: FlexDirection::Column,
             align_content: AlignContent::Center,
             align_items: AlignItems::Center,
-
             padding: UiRect::all(px(50.0)),
         }
-
         Children [
             (
                 Node {
@@ -42,44 +39,44 @@ pub fn title_ui() -> impl Scene {
                         Text::new("Slime")
                         font_04B_30(130.0)
                         Node {
-                            margin: UiRect::top(px(-40.0))
+                            margin: UiRect::top(px(-40.0)),
                         }
-                    )
-
+                    ),
                 ]
             ),
-                (Node {
+            (
+                Node {
                     flex_direction: FlexDirection::Row,
                     justify_content: JustifyContent::SpaceAround,
                     width: percent(100.0),
                 }
                 Children [
-
                     (
-                        styled_button(bsn_list! {
-                            Text::new("Start")
-                            button_text_style()
-
-                        })
+                        styled_button(
+                            bsn_list! {
+                                Text::new("Start") button_text_style()
+                            },
+                        )
+                        on(|ev: On<Pointer<Press>>| info!("Start Pressed!"))
                     ),
-                    (
-                        styled_button(bsn_list! {
-                            Text::new("Option")
-                            button_text_style()
-                        })
-                    )
-                ])
+                    styled_button(
+                        bsn_list! {
+                            Text::new("Option") button_text_style()
+                        },
+                    ),
+                ]
+            ),
         ]
     }
 }
 pub fn button_text_style() -> impl Scene {
     bsn! {
-    TextColor(Color::srgba_u8(7,14,120,255))
-    TextLayout::new_with_justify(Justify::Center)
-    Node {
-        margin: UiRect::axes(px(35.0), px(5.0)),
-    }
-    font_04B_30(25.0)
+        TextColor(Color::srgba_u8(7, 14, 120, 255))
+        TextLayout::new_with_justify(Justify::Center)
+        Node {
+            margin: UiRect::axes(px(35.0), px(5.0)),
+        }
+        font_04B_30(25.0)
     }
 }
 pub fn styled_button(children: impl SceneList) -> impl Scene {
@@ -99,9 +96,21 @@ pub fn styled_button(children: impl SceneList) -> impl Scene {
 
     bsn! {
         Button
-        image_node_with_texture_atlas("images/button.png", texture_atlas, NodeImageMode::Sliced(slicer))
+        // image_node_with_texture_atlas("images/button.png", texture_atlas, NodeImageMode::Sliced(slicer))
 
-        template(move |_| Ok(AnimationCollection::new(animations.clone(), Some("default".into()))))
+        ImageNode {
+            image: "images/button.png",
+            image_mode: {NodeImageMode::Sliced(slicer)},
+
+            texture_atlas: {TextureAtlasTemplate {
+                layout: asset_value(texture_atlas),
+                index: 0
+            }}
+        }
+
+        template_value(AnimationCollection::new(animations.clone(), Some("default".into())))
+
+        on(|ev:On<Pointer<Over>>| info!("Button Focused!"))
 
         Node{
             // padding: UiRect::axes(px(10.0), px(5.0)),
@@ -151,7 +160,7 @@ pub fn font_04B_30(font_size: f32) -> impl Scene {
     bsn! {
         TextFont {
             font: FontSourceTemplate::Handle("fonts/04B_30.ttf"),
-            font_size: {FontSize::Px(font_size)}
+            font_size: FontSize::Px(font_size),
         }
     }
 }
@@ -162,11 +171,13 @@ pub fn image_node_with_texture_atlas(
     image_mode: NodeImageMode,
 ) -> impl Scene {
     bsn! {
-        template(move |ctx|{
+        template(move |ctx| {
             Ok(ImageNode {
                 image: ctx.resource::<AssetServer>().load(path),
                 texture_atlas: Some(TextureAtlas {
-                    layout: ctx.resource_mut::<Assets<TextureAtlasLayout>>().add(layout.clone()),
+                    layout: ctx
+                        .resource_mut::<Assets<TextureAtlasLayout>>()
+                        .add(layout.clone()),
                     index: 0,
                 }),
                 image_mode: image_mode.clone(),

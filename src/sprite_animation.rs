@@ -31,7 +31,7 @@ impl AnimationConfig {
         }
     }
 }
-#[derive(Component)]
+#[derive(Component, Clone, Default)]
 pub struct AnimationCollection {
     animations: HashMap<String, AnimationConfig>,
     current_animation: Option<String>,

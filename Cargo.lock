@@ -436,7 +436,6 @@ dependencies = [
  "bevy_reflect",
  "bevy_tasks",
  "bevy_utils",
- "cfg-if",
  "console_error_panic_hook",
  "ctrlc",
  "downcast-rs 2.0.2",
@@ -655,7 +654,6 @@ dependencies = [
  "bumpalo",
  "concurrent-queue",
  "derive_more",
- "downcast-rs 2.0.2",
  "fixedbitset",
  "indexmap",
  "log",
@@ -697,6 +695,7 @@ dependencies = [
  "bevy_color",
  "bevy_derive",
  "bevy_ecs",
+ "bevy_input",
  "bevy_input_focus",
  "bevy_log",
  "bevy_math",
@@ -1511,6 +1510,7 @@ dependencies = [
  "bevy_reflect",
  "bevy_text",
  "bevy_ui",
+ "bevy_window",
  "parley",
  "smol_str",
 ]
@@ -1522,6 +1522,7 @@ dependencies = [
  "async-channel",
  "bevy_platform",
  "disqualified",
+ "indexmap",
  "thread_local",
 ]
 
@@ -1565,7 +1566,6 @@ dependencies = [
  "bevy_tasks",
  "bevy_window",
  "bytemuck",
- "cfg-if",
  "js-sys",
  "tracing",
  "wasm-bindgen",
