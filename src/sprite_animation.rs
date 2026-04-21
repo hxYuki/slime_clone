@@ -51,6 +51,17 @@ impl AnimationCollection {
         }
     }
 
+    pub fn set_current_animation(&mut self, name: String) {
+        if self.animations.contains_key(&name) {
+            self.current_animation = Some(name);
+        } else {
+            warn!(
+                "Animation with name '{}' does not exist in collection!",
+                name
+            );
+        }
+    }
+
     pub fn ensure_animation(&mut self) {
         if self.current_animation.is_none() {
             let first_key = self.animations.keys().next();

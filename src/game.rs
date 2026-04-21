@@ -165,12 +165,9 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
     ));
 
     commands.spawn_scene(bsn! {
-        ui_root_despawn_on_exit(AppState::Game)
-
-        Children [
-            score_text()
-        ]
-    });
+                             ui_root_despawn_on_exit(AppState::Game)
+                             Children [score_text()]
+                         });
 
     commands.spawn((
         room.bundle(),
@@ -202,7 +199,6 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
 
 fn score_text() -> impl Scene {
     bsn! {
-    (
         Node {
             width: Val::Percent(100.0),
             height: Val::Percent(100.0),
@@ -210,7 +206,6 @@ fn score_text() -> impl Scene {
             top: px(20),
             left: px(80),
         }
-
         Text::new("Score: ")
         TextColor(WHITE)
         template(|context| {
@@ -220,9 +215,7 @@ fn score_text() -> impl Scene {
                 ..default()
             })
         })
-
-        Children [
-        (
+        Children [(
             ScoreText
             TextSpan::new("0")
             template(|context| {
@@ -233,7 +226,7 @@ fn score_text() -> impl Scene {
                 })
             })
         )]
-    )}
+    }
 }
 
 #[derive(Component, FromTemplate)]

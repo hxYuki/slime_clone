@@ -1,16 +1,17 @@
 use std::time::Duration;
 
 use bevy::{
-    asset::HandleTemplate,
     ecs::template::template,
     image::TextureAtlasTemplate,
     prelude::*,
     scene::{Scene, bsn},
     text::FontSourceTemplate,
-    ui::widget::ImageNodeTemplate,
 };
 
-use crate::sprite_animation::{AnimationCollection, AnimationConfig};
+use crate::{
+    sprite_animation::{AnimationCollection, AnimationConfig},
+    title::FocusedButton,
+};
 
 pub fn title_ui() -> impl Scene {
     bsn! {
@@ -57,6 +58,7 @@ pub fn title_ui() -> impl Scene {
                                 Text::new("Start") button_text_style()
                             },
                         )
+                        FocusedButton
                         on(|ev: On<Pointer<Press>>| info!("Start Pressed!"))
                     ),
                     styled_button(
@@ -87,7 +89,7 @@ pub fn styled_button(children: impl SceneList) -> impl Scene {
     };
 
     let texture_atlas =
-        TextureAtlasLayout::from_grid(UVec2::new(65, 14), 1, 3, Some(UVec2::new(0, 1)), None);
+        TextureAtlasLayout::from_grid(UVec2::new(65, 15), 1, 3, Some(UVec2::new(0, 1)), None);
 
     let animations = [
         AnimationConfig::new("default".into(), 0..1, Duration::from_millis(300)),
@@ -110,7 +112,9 @@ pub fn styled_button(children: impl SceneList) -> impl Scene {
 
         template_value(AnimationCollection::new(animations.clone(), Some("default".into())))
 
-        on(|ev:On<Pointer<Over>>| info!("Button Focused!"))
+        on(|ev:On<Pointer<Enter>>, mut command: Commands| {
+                command.get_entity(ev.entity).unwrap().insert(FocusedButton);
+            })
 
         Node{
             // padding: UiRect::axes(px(10.0), px(5.0)),
@@ -124,37 +128,6 @@ pub fn styled_button(children: impl SceneList) -> impl Scene {
         ]
     }
 }
-
-// #[derive(Component, FromTemplate)]
-// struct TestComponent {
-//     texture_atlas: TextureAtlas,
-//     #[template(built_in)]
-//     texture_atlas_option: Option<TextureAtlas>,
-//
-//     #[template(built_in)]
-//     image: Option<Handle<Image>>,
-// }
-//
-// pub fn button() -> impl Scene {
-//     bsn! {
-//         template(|ctx|{
-//             Ok(ImageNode {
-//                 image: ctx.resource::<AssetServer>().load("images/button.png"),
-//                 image_mode: NodeImageMode::Sliced(TextureSlicer {
-//                     border: BorderRect::axes(10.0, 3.0),
-//                     ..default()
-//                 }),
-//                 texture_atlas: Some(TextureAtlas {
-//                     layout: ctx.resource_mut::<Assets<TextureAtlasLayout>>().add(
-//                         TextureAtlasLayout::from_grid(UVec2::new(65, 12), 1, 3, None, None)
-//                     ),
-//                     index: 0,
-//                 }),
-//                 ..default()
-//             })
-//         })
-//     }
-// }
 
 pub fn font_04B_30(font_size: f32) -> impl Scene {
     bsn! {
