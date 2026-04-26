@@ -6,7 +6,7 @@ use bevy::{
 use crate::{
     AppState,
     sprite_animation::AnimationCollection,
-    ui::{self, ui_root_despawn_on_exit},
+    ui::{self, ButtonGroupFocused, ui_root_despawn_on_exit},
 };
 
 pub fn plugin(app: &mut App) {
@@ -16,9 +16,6 @@ pub fn plugin(app: &mut App) {
         Update,
         animated_background.run_if(in_state(AppState::Title)),
     );
-
-    app.add_observer(reset_button_animation)
-        .add_observer(focus_button_animation);
 }
 
 fn setup_title(mut command: Commands, asset_server: Res<AssetServer>) {
@@ -63,35 +60,4 @@ fn animated_background(
 
         sprite.custom_size = Some(image_size);
     });
-}
-
-#[derive(Component, Default, Clone, Copy)]
-pub struct FocusedButton;
-
-fn reset_button_animation(
-    removal: On<Remove, FocusedButton>,
-    mut buttons: Query<(&mut AnimationCollection, Has<FocusedButton>)>,
-) {
-    if let Ok((mut collection, _)) = buttons.get_mut(removal.entity) {
-        collection.set_current_animation("default".to_string());
-    }
-}
-
-fn focus_button_animation(
-    addition: On<Add, FocusedButton>,
-    mut buttons: Query<(&mut AnimationCollection, Has<FocusedButton>)>,
-
-    mut command: Commands,
-    focused: Query<(Entity), (With<FocusedButton>, With<Button>, With<AnimationCollection>)>,
-) {
-    focused
-        .iter()
-        .filter(|(entity)| entity != &addition.entity)
-        .for_each(|(entity)| {
-            command.entity(entity).remove::<FocusedButton>();
-        });
-
-    if let Ok((mut collection, _)) = buttons.get_mut(addition.entity) {
-        collection.set_current_animation("focused".to_string());
-    }
 }

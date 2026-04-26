@@ -10,7 +10,7 @@ use bevy::{
 
 use crate::{
     sprite_animation::{AnimationCollection, AnimationConfig},
-    title::FocusedButton,
+    ui::{ButtonFocusedEvent, ButtonGroupFocused, InButtonGroup},
 };
 
 pub fn title_ui() -> impl Scene {
@@ -46,6 +46,7 @@ pub fn title_ui() -> impl Scene {
                 ]
             ),
             (
+                #MainButtonGroup
                 Node {
                     flex_direction: FlexDirection::Row,
                     justify_content: JustifyContent::SpaceAround,
@@ -58,13 +59,17 @@ pub fn title_ui() -> impl Scene {
                                 Text::new("Start") button_text_style()
                             },
                         )
-                        FocusedButton
+                        ButtonGroupFocused(true)
+                        InButtonGroup(#MainButtonGroup)
                         on(|ev: On<Pointer<Press>>| info!("Start Pressed!"))
                     ),
-                    styled_button(
-                        bsn_list! {
-                            Text::new("Option") button_text_style()
-                        },
+                    (
+                        styled_button(
+                            bsn_list! {
+                                Text::new("Option") button_text_style()
+                            },
+                        )
+                        InButtonGroup(#MainButtonGroup)
                     ),
                 ]
             ),
@@ -98,7 +103,6 @@ pub fn styled_button(children: impl SceneList) -> impl Scene {
 
     bsn! {
         Button
-        // image_node_with_texture_atlas("images/button.png", texture_atlas, NodeImageMode::Sliced(slicer))
 
         ImageNode {
             image: "images/button.png",
@@ -113,7 +117,7 @@ pub fn styled_button(children: impl SceneList) -> impl Scene {
         template_value(AnimationCollection::new(animations.clone(), Some("default".into())))
 
         on(|ev:On<Pointer<Enter>>, mut command: Commands| {
-                command.get_entity(ev.entity).unwrap().insert(FocusedButton);
+                command.trigger(ButtonFocusedEvent(ev.entity));
             })
 
         Node{

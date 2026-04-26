@@ -55,7 +55,7 @@ impl Plugin for AppPlugin {
 
         app.init_state::<AppState>();
 
-        app.add_plugins((assets_tracker::plugin, audio::plugin));
+        app.add_plugins((assets_tracker::plugin, audio::plugin, ui::plugin));
 
         app.add_plugins((title::plugin, game_plugin, sprite_animation::plugin));
 
@@ -106,3 +106,5 @@ fn switch_state(
         NextState::set_if_neq(&mut next_state, AppState::Title);
     }
 }
+
+fn switch_state_message() {}
