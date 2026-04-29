@@ -9,8 +9,9 @@ use bevy::{
 };
 
 use crate::{
+    change_state_to_game,
     sprite_animation::{AnimationCollection, AnimationConfig},
-    ui::{ButtonFocusedEvent, ButtonGroupFocused, InButtonGroup},
+    ui::{ButtonFocusedEvent, ButtonGroupFocused, InButtonGroup, SystemCache},
 };
 
 pub fn title_ui() -> impl Scene {
@@ -61,7 +62,15 @@ pub fn title_ui() -> impl Scene {
                         )
                         ButtonGroupFocused(true)
                         InButtonGroup(#MainButtonGroup)
-                        on(|ev: On<Pointer<Press>>| info!("Start Pressed!"))
+                        on(|ev: On<Pointer<Press>>, mut command: Commands, buttons: Query<&SystemCache>| {
+                            buttons
+                                .get(ev.entity)
+                                .map(|action| {
+                                    action.run(&mut command);
+                                })
+                                .unwrap();
+                        })
+                        template(|_| Ok(SystemCache::new_system(change_state_to_game)))
                     ),
                     (
                         styled_button(
@@ -101,27 +110,21 @@ pub fn styled_button(children: impl SceneList) -> impl Scene {
         AnimationConfig::new("focused".into(), 1..3, Duration::from_millis(300)),
     ];
 
-    bsn! {
+    bsn! {//
         Button
-
         ImageNode {
             image: "images/button.png",
-            image_mode: {NodeImageMode::Sliced(slicer)},
-
+            image_mode: NodeImageMode::Sliced(slicer),
             texture_atlas: {TextureAtlasTemplate {
                 layout: asset_value(texture_atlas),
-                index: 0
-            }}
+                index: 0,
+            }},
         }
-
         template_value(AnimationCollection::new(animations.clone(), Some("default".into())))
-
-        on(|ev:On<Pointer<Enter>>, mut command: Commands| {
-                command.trigger(ButtonFocusedEvent(ev.entity));
-            })
-
-        Node{
-            // padding: UiRect::axes(px(10.0), px(5.0)),
+        on(|ev: On<Pointer<Enter>>, mut command: Commands| {
+            command.trigger(ButtonFocusedEvent(ev.entity));
+        })
+        Node {
             align_content: AlignContent::Center,
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,

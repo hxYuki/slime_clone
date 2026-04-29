@@ -61,14 +61,14 @@ impl Plugin for AppPlugin {
 
         app.add_systems(Startup, spawn_camera);
 
-        app.add_systems(
-            Update,
-            (
-                switch_state,
-                // #[cfg(feature = "dev")]
-                // bevy::dev_tools::states::log_transitions::<AppState>,
-            ),
-        );
+        // app.add_systems(
+        //     Update,
+        //     (
+        //         switch_state,
+        //         // #[cfg(feature = "dev")]
+        //         // bevy::dev_tools::states::log_transitions::<AppState>,
+        //     ),
+        // );
     }
 }
 
@@ -82,29 +82,6 @@ fn spawn_camera(mut command: Commands) {
     ));
 }
 
-fn switch_state(
-    mut next_state: ResMut<NextState<AppState>>,
-    input: Res<ButtonInput<KeyCode>>,
-    gamepads: Query<(Entity, &Gamepad)>,
-) {
-    gamepads.iter().take(1).for_each(|(entity, gamepad)| {
-        if gamepad.just_pressed(GamepadButton::South) {
-            NextState::set_if_neq(&mut next_state, AppState::Game);
-        }
-
-        if gamepad.just_pressed(GamepadButton::Start) {
-            NextState::set_if_neq(&mut next_state, AppState::Title);
-        }
-    });
-
-    if input.just_pressed(KeyCode::Enter) {
-        NextState::set_if_neq(&mut next_state, AppState::Game);
-        // next_state.set(AppState::Game);
-    }
-
-    if input.just_pressed(KeyCode::Escape) {
-        NextState::set_if_neq(&mut next_state, AppState::Title);
-    }
+pub fn change_state_to_game(mut next_state: ResMut<NextState<AppState>>) {
+    NextState::set_if_neq(&mut next_state, AppState::Game);
 }
-
-fn switch_state_message() {}
