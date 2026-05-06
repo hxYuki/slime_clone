@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use bevy::{
-    ecs::template::template,
+    ecs::template::{system_value, template},
     image::TextureAtlasTemplate,
     prelude::*,
     scene::{Scene, bsn},
@@ -11,7 +11,7 @@ use bevy::{
 use crate::{
     change_state_to_game,
     sprite_animation::{AnimationCollection, AnimationConfig},
-    ui::{ButtonFocusedEvent, ButtonGroupFocused, InButtonGroup, SystemCache},
+    ui::{ButtonFocusedEvent, ButtonGroupFocused, Callback, InButtonGroup},
 };
 
 pub fn title_ui() -> impl Scene {
@@ -62,15 +62,15 @@ pub fn title_ui() -> impl Scene {
                         )
                         ButtonGroupFocused(true)
                         InButtonGroup(#MainButtonGroup)
-                        on(|ev: On<Pointer<Press>>, mut command: Commands, buttons: Query<&SystemCache>| {
+                        on(|ev: On<Pointer<Press>>, mut command: Commands, buttons: Query<&Callback>| {
                             buttons
                                 .get(ev.entity)
                                 .map(|action| {
-                                    action.run(&mut command);
+                                    command.run_system(action.0);
                                 })
                                 .unwrap();
                         })
-                        template(|_| Ok(SystemCache::new_system(change_state_to_game)))
+                        Callback(system_value(change_state_to_game))
                     ),
                     (
                         styled_button(
@@ -88,7 +88,7 @@ pub fn title_ui() -> impl Scene {
 pub fn button_text_style() -> impl Scene {
     bsn! {
         TextColor(Color::srgba_u8(7, 14, 120, 255))
-        TextLayout::new_with_justify(Justify::Center)
+        TextLayout::justify(Justify::Center)
         Node {
             margin: UiRect::axes(px(35.0), px(5.0)),
         }
