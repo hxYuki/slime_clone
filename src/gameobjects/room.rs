@@ -17,7 +17,15 @@ pub struct Room {
 impl FromWorld for Room {
     fn from_world(world: &mut World) -> Self {
         let asset_server = world.resource::<AssetServer>();
-        let tileset = asset_server.load("images/tileset.png");
+        let tileset = asset_server
+            .load_builder()
+            .with_settings(|settings: &mut ImageLoaderSettings| {
+                settings.array_layout = Some(ImageArrayLayout::GridCount {
+                    columns: 4,
+                    rows: 4,
+                });
+            })
+            .load("images/tileset.png");
 
         let tile_data = vec![
             00, 01, 02, 01, 02, 01, 02, 01, 02, 01, 02, 01, 02, 01, 02, 03, //
@@ -50,7 +58,7 @@ impl Room {
                 tile_display_size: UVec2::splat(self.tile_size),
                 chunk_size: self.room_size,
                 tileset: self.tileset.clone(),
-                tileset_grid_size: UVec2 { x: 4, y: 4 },
+
                 ..default()
             },
             TilemapChunkTileData(self.tile_data.clone()),

@@ -1,16 +1,25 @@
-use bevy::{
-    ecs::{lifecycle::HookContext, world::DeferredWorld},
-    prelude::*,
-};
+use bevy::prelude::*;
 
 use crate::{
     AppState,
-    sprite_animation::AnimationCollection,
-    ui::{self, ButtonGroupFocused, ui_root_despawn_on_exit},
+    ui::{self, options_ui, ui_root_despawn_on_exit},
 };
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, SubStates, Default)]
+#[source(AppState = AppState::Title)]
+#[states(scoped_entities)]
+pub enum TitleState {
+    #[default]
+    Main,
+    Option,
+}
+
 pub fn plugin(app: &mut App) {
-    app.add_systems(OnEnter(AppState::Title), setup_title);
+    app.add_sub_state::<TitleState>();
+
+    app.add_systems(OnEnter(AppState::Title), title_background.spawn());
+    app.add_systems(OnEnter(TitleState::Main), setup_title);
+    app.add_systems(OnEnter(TitleState::Option), options_ui.spawn());
 
     app.add_systems(
         Update,
@@ -18,29 +27,36 @@ pub fn plugin(app: &mut App) {
     );
 }
 
-fn setup_title(mut command: Commands, asset_server: Res<AssetServer>) {
+fn setup_title(mut command: Commands) {
     command.spawn_scene(bsn! {
-                            ui_root_despawn_on_exit(AppState::Title)
+                            ui_root_despawn_on_exit(TitleState::Main)
                             Children [ui::title_ui()]
                         });
+}
 
-    command.spawn((
+fn title_background() -> impl Scene {
+    bsn! {
         Sprite {
-            image: asset_server.load("images/background-pattern.png"),
+            image: "images/background-pattern.png",
             image_mode: SpriteImageMode::Tiled {
                 tile_x: true,
                 tile_y: true,
                 stretch_value: 0.25,
             },
-
-            ..default()
-        },
-        AnimatedBackground,
-        DespawnOnExit(AppState::Title),
-    ));
+        }
+        AnimatedBackground
+        template_value(DespawnOnExit(AppState::Title))
+    }
 }
 
-#[derive(Component)]
+pub fn change_title_state_to_main(mut next_state: ResMut<NextState<TitleState>>) {
+    next_state.set(TitleState::Main);
+}
+pub fn change_title_state_to_option(mut next_state: ResMut<NextState<TitleState>>) {
+    next_state.set(TitleState::Option);
+}
+
+#[derive(Component, Clone, Default)]
 struct AnimatedBackground;
 
 fn animated_background(

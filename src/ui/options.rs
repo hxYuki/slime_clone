@@ -1,0 +1,52 @@
+use bevy::audio::Volume;
+use bevy::ecs::template::system_value;
+use bevy::prelude::*;
+use bevy::scene::prelude::*;
+use bevy::ui_widgets::{SliderValue, ValueChange};
+
+use crate::audio::ChannelVolume;
+use crate::resource_notify::{ResourceChangeHandler, subscribe_to};
+use crate::title::{TitleState, change_title_state_to_main};
+use crate::ui::{StyledButton, button_text_style, font_04B_30, slider_ui, ui_root_despawn_on_exit};
+
+pub fn options_ui() -> impl Scene {
+    bsn! {
+        ui_root_despawn_on_exit(TitleState::Option)
+        Children [(
+            Node {
+                width: percent(100),
+                height: percent(100),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                row_gap: px(10),
+            }
+            Children [
+                (
+                    Text::new("Options")
+                    font_04B_30(130.0)
+                ),
+                (
+                    slider_ui()
+                    on(|value_changed: On<ValueChange<f32>>, mut channel_volume: ResMut<ChannelVolume>| {
+                        let value = value_changed.value;
+
+                        channel_volume.music_volume = Volume::Linear(value / 100.0);
+                    })
+                    subscribe_to::<ChannelVolume>()
+                    ResourceChangeHandler(system_value(|self_entity: In<Entity>, channel_volume: Res<ChannelVolume>, mut commands:Commands| {
+
+                        commands.entity(self_entity.0).insert(SliderValue(channel_volume.music_volume.to_linear() * 100.0));
+                    }))
+                ),
+                (
+                    :StyledButton{ //
+                        @caption: {bsn_list! {Text::new("Back") button_text_style()}},
+                        @callback: system_value(change_title_state_to_main),
+                    }
+                )
+            ]
+        )]
+    }
+}

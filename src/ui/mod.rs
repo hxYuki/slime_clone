@@ -3,14 +3,21 @@ mod title;
 
 use bevy::{
     ecs::{
-        component::Component, entity::Entity, observer::On,
-        relationship::RelationshipSourceCollection, system::SystemId, template::FromTemplate,
+        component::Component,
+        entity::Entity,
+        observer::On,
+        relationship::RelationshipSourceCollection,
+        system::SystemId,
+        template::{FromTemplate, system_value},
     },
+    picking::hover::Hovered,
     prelude::*,
     scene::{Scene, bsn, template_value},
     state::{state::States, state_scoped::DespawnOnExit},
     ui::{Node, percent},
+    ui_widgets::{Slider, SliderRange, SliderThumb, SliderValue, TrackClick, ValueChange},
 };
+pub use options::*;
 pub use title::*;
 
 use crate::sprite_animation::AnimationCollection;
@@ -39,11 +46,7 @@ pub fn plugin(app: &mut App) {
             Update,
             (switch_button_focus_animation, trigger_focused_button),
         )
-        // .add_systems(
-        //     Update,
-        //     (collect_unregistered_systems, register_callback_system),
-        // )
-    ;
+        .add_systems(Update, update_slider_thumb_position);
 }
 
 #[derive(Component, Debug, FromTemplate)]
@@ -64,65 +67,20 @@ pub struct ButtonFocusedEvent(Entity);
 #[derive(Component, FromTemplate)]
 pub struct Callback(SystemId);
 
-// #[derive(Component)]
-//
-// pub enum SystemCache {
-//     Unregistered(Option<BoxedSystem<(), ()>>),
-//     Registered(SystemId<(), ()>),
-// }
-//
-// impl SystemCache {
-//     pub fn new_system<M>(system: impl IntoSystem<(), (), M>) -> Self {
-//         Self::Unregistered(Some(Box::new(IntoSystem::into_system(system))))
-//     }
-//
-//     pub fn run(&self, commands: &mut Commands) {
-//         match self {
-//             SystemCache::Unregistered(_) => {
-//                 warn!("Trying to run an unregistered system, this is likely a bug");
-//             }
-//             SystemCache::Registered(id) => {
-//                 commands.run_system(*id);
-//             }
-//         }
-//     }
-// }
-//
-// #[derive(Resource, Default)]
-// struct RegisterQuery {
-//     new_add_entities: Vec<Entity>,
-// }
-//
-// fn collect_unregistered_systems(
-//     systems: Query<(Entity, &SystemCache), Added<SystemCache>>,
-//     mut q: ResMut<RegisterQuery>,
-// ) {
-//     q.new_add_entities
-//         .extend_from_iter(systems.iter().map(|(e, _)| e));
-// }
-//
-// fn register_callback_system(
-//     world: &mut World,
-//     // systems: Query<(Entity, &SystemCache), Added<SystemCache>>,
-// ) {
-//     let mut q = world.get_resource_mut::<RegisterQuery>().unwrap();
-//     let entities = q.new_add_entities.drain(..).collect::<Vec<_>>();
-//
-//     entities.into_iter().for_each(|e| {
-//         let mut comp = world.get_mut::<SystemCache>(e).unwrap();
-//
-//         let system = match &mut *comp {
-//             SystemCache::Registered(_) => return,
-//             SystemCache::Unregistered(system) => system,
-//         };
-//         let system = system.take().unwrap();
-//         let id = world.register_boxed_system(system);
-//
-//         if let Some(mut cache) = world.get_mut::<SystemCache>(e) {
-//             *cache = SystemCache::Registered(id);
-//         }
-//     });
-// }
+pub fn press_trigger_callback(
+    ev: On<Pointer<Press>>,
+    mut command: Commands,
+    buttons: Query<&Callback>,
+) {
+    buttons
+        .get(ev.entity)
+        .map(|action| {
+            command.run_system(action.0);
+        })
+        .expect(
+            "You should only use on_press_trigger_callback on entities with a Callback component",
+        );
+}
 
 fn handle_button_group_focus(
     focused: On<ButtonFocusedEvent>,
@@ -214,4 +172,95 @@ fn trigger_focused_button(
             warn!("Multiple active button groups, can't determine which one to trigger");
         }
     }
+}
+
+/// A slider component should listen a data source as SliderValue, and set it on ValueChange.
+pub fn slider_ui() -> impl Scene {
+    bsn! {
+        #Slider
+        Node {
+            display: Display::Flex,
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Stretch,
+            justify_items: JustifyItems::Center,
+            column_gap: px(4),
+            height: px(12),
+            width: percent(30),
+        }
+        Hovered
+        Slider {
+            track_click: TrackClick::Snap,
+        }
+        SliderValue(100.0)
+        SliderRange::new(0.0, 100.0)
+        // on(slider_value_change_update_thumb_position)
+        Children [
+            (
+                Node {
+                    height: px(6.0),
+                    border_radius: BorderRadius::all(px(3)),
+                }
+                BackgroundColor(Color::WHITE)
+            ),
+            (
+                Node {
+                    display: Display::Flex,
+                    position_type: PositionType::Absolute,
+                    left: px(0),
+                    right: px(12),
+                    top: px(0),
+                    bottom: px(0),
+                }
+                Children [(
+                    Node {
+                        display: Display::Flex,
+                        width: px(12),
+                        height: px(12),
+                        position_type: PositionType::Absolute,
+                        left: percent(0),
+                        border_radius: BorderRadius::MAX,
+                    }
+                    SliderThumb
+                    ThumbOfSlider(#Slider)
+                    BackgroundColor(Color::BLACK)
+                )]
+            ),
+        ]
+    }
+}
+
+#[derive(Component, FromTemplate)]
+#[relationship(relationship_target = SliderEntityThumb)]
+struct ThumbOfSlider(Entity);
+#[derive(Component, FromTemplate)]
+#[relationship_target(relationship = ThumbOfSlider)]
+struct SliderEntityThumb(Entity);
+
+fn slider_value_change_update_thumb_position(
+    value_change: On<ValueChange<f32>>,
+    q_slider: Query<(Entity, &SliderValue, &SliderRange, &SliderEntityThumb), With<Slider>>,
+    mut q_thumb: Query<&mut Node, With<SliderThumb>>,
+) {
+    q_slider
+        .get(value_change.source)
+        .and_then(|(slider, _, range, SliderEntityThumb(thumb))| {
+            q_thumb.get_mut(*thumb).map(|mut node| {
+                node.left = percent(range.thumb_position(value_change.value) * 100.0);
+            })
+        })
+        .unwrap();
+}
+
+fn update_slider_thumb_position(
+    mut sliders: Query<(&SliderValue, &SliderRange, &SliderEntityThumb), Changed<SliderValue>>,
+    mut q_thumb: Query<&mut Node, With<SliderThumb>>,
+) {
+    sliders
+        .iter_mut()
+        .for_each(|(value, range, SliderEntityThumb(thumb))| {
+            if let Ok(mut node) = q_thumb.get_mut(*thumb) {
+                node.left = percent(range.thumb_position(value.0) * 100.0);
+            }
+        });
 }

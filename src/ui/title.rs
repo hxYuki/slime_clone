@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use bevy::{
-    ecs::template::{system_value, template},
+    ecs::template::{SystemIdTemplate, system_value, template},
     image::TextureAtlasTemplate,
     prelude::*,
     scene::{Scene, bsn},
@@ -11,7 +11,8 @@ use bevy::{
 use crate::{
     change_state_to_game,
     sprite_animation::{AnimationCollection, AnimationConfig},
-    ui::{ButtonFocusedEvent, ButtonGroupFocused, Callback, InButtonGroup},
+    title::change_title_state_to_option,
+    ui::{ButtonFocusedEvent, ButtonGroupFocused, Callback, InButtonGroup, press_trigger_callback},
 };
 
 pub fn title_ui() -> impl Scene {
@@ -55,29 +56,18 @@ pub fn title_ui() -> impl Scene {
                 }
                 Children [
                     (
-                        styled_button(
-                            bsn_list! {
-                                Text::new("Start") button_text_style()
-                            },
-                        )
+                        :StyledButton{
+                            @caption: {bsn_list! {Text::new("Start") button_text_style()}},
+                            @callback: system_value(change_state_to_game),
+                        }
                         ButtonGroupFocused(true)
                         InButtonGroup(#MainButtonGroup)
-                        on(|ev: On<Pointer<Press>>, mut command: Commands, buttons: Query<&Callback>| {
-                            buttons
-                                .get(ev.entity)
-                                .map(|action| {
-                                    command.run_system(action.0);
-                                })
-                                .unwrap();
-                        })
-                        Callback(system_value(change_state_to_game))
                     ),
-                    (
-                        styled_button(
-                            bsn_list! {
-                                Text::new("Option") button_text_style()
-                            },
-                        )
+                    ( //
+                        :StyledButton{
+                            @caption: {bsn_list! {Text::new("Options") button_text_style()}},
+                            @callback: system_value(change_title_state_to_option),
+                        }
                         InButtonGroup(#MainButtonGroup)
                     ),
                 ]
@@ -95,44 +85,66 @@ pub fn button_text_style() -> impl Scene {
         font_04B_30(25.0)
     }
 }
-pub fn styled_button(children: impl SceneList) -> impl Scene {
-    let slicer = TextureSlicer {
-        border: BorderRect::axes(10.0, 6.0),
-        max_corner_scale: 4.0,
-        ..default()
-    };
 
-    let texture_atlas =
-        TextureAtlasLayout::from_grid(UVec2::new(65, 15), 1, 3, Some(UVec2::new(0, 1)), None);
+#[derive(SceneComponent, Default, Clone)]
+#[scene(StyledButtonProps)]
+pub struct StyledButton;
+impl StyledButton {
+    pub fn scene(props: StyledButtonProps) -> impl Scene {
+        let slicer = TextureSlicer {
+            border: BorderRect::axes(10.0, 6.0),
+            max_corner_scale: 4.0,
+            ..default()
+        };
 
-    let animations = [
-        AnimationConfig::new("default".into(), 0..1, Duration::from_millis(300)),
-        AnimationConfig::new("focused".into(), 1..3, Duration::from_millis(300)),
-    ];
+        let texture_atlas =
+            TextureAtlasLayout::from_grid(UVec2::new(65, 15), 1, 3, Some(UVec2::new(0, 1)), None);
 
-    bsn! {//
-        Button
-        ImageNode {
-            image: "images/button.png",
-            image_mode: NodeImageMode::Sliced(slicer),
-            texture_atlas: {TextureAtlasTemplate {
-                layout: asset_value(texture_atlas),
-                index: 0,
-            }},
+        let animations = [
+            AnimationConfig::new("default".into(), 0..1, Duration::from_millis(300)),
+            AnimationConfig::new("focused".into(), 1..3, Duration::from_millis(300)),
+        ];
+
+        bsn! {//
+            Button
+            ImageNode {
+                image: "images/button.png",
+                image_mode: NodeImageMode::Sliced(slicer),
+                texture_atlas: {TextureAtlasTemplate {
+                    layout: asset_value(texture_atlas),
+                    index: 0,
+                }},
+            }
+            template_value(AnimationCollection::new(animations.clone(), Some("default".into())))
+            on(|ev: On<Pointer<Enter>>, mut command: Commands| {
+                command.trigger(ButtonFocusedEvent(ev.entity));
+            })
+            on(press_trigger_callback)
+            Callback({props.callback})
+            Node {
+                align_content: AlignContent::Center,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                justify_items: JustifyItems::Center,
+            }
+            Children [
+                {props.caption}
+            ]
         }
-        template_value(AnimationCollection::new(animations.clone(), Some("default".into())))
-        on(|ev: On<Pointer<Enter>>, mut command: Commands| {
-            command.trigger(ButtonFocusedEvent(ev.entity));
-        })
-        Node {
-            align_content: AlignContent::Center,
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::Center,
-            justify_items: JustifyItems::Center,
+    }
+}
+pub struct StyledButtonProps {
+    pub caption: Box<dyn SceneList>,
+    pub callback: SystemIdTemplate,
+}
+impl Default for StyledButtonProps {
+    fn default() -> Self {
+        Self {
+            caption: Box::new(bsn! {
+                                  Text::new("Button")
+                              }),
+            callback: system_value(|| {}),
         }
-        Children [
-            {children}
-        ]
     }
 }
 
@@ -142,27 +154,5 @@ pub fn font_04B_30(font_size: f32) -> impl Scene {
             font: FontSourceTemplate::Handle("fonts/04B_30.ttf"),
             font_size: FontSize::Px(font_size),
         }
-    }
-}
-
-pub fn image_node_with_texture_atlas(
-    path: &'static str,
-    layout: TextureAtlasLayout,
-    image_mode: NodeImageMode,
-) -> impl Scene {
-    bsn! {
-        template(move |ctx| {
-            Ok(ImageNode {
-                image: ctx.resource::<AssetServer>().load(path),
-                texture_atlas: Some(TextureAtlas {
-                    layout: ctx
-                        .resource_mut::<Assets<TextureAtlasLayout>>()
-                        .add(layout.clone()),
-                    index: 0,
-                }),
-                image_mode: image_mode.clone(),
-                ..default()
-            })
-        })
     }
 }

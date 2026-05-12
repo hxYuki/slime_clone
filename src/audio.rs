@@ -1,10 +1,17 @@
-use bevy::prelude::*;
+use bevy::{audio::Volume, prelude::*};
 
 pub(super) fn plugin(app: &mut App) {
-    app.add_systems(
+    app.init_resource::<ChannelVolume>().add_systems(
         Update,
-        apply_global_volume.run_if(resource_changed::<GlobalVolume>),
+        apply_global_volume
+            .run_if(resource_changed::<GlobalVolume>.or_eager(resource_changed::<ChannelVolume>)),
     );
+}
+
+#[derive(Resource, Reflect, Default)]
+pub struct ChannelVolume {
+    pub music_volume: Volume,
+    pub sound_effect_volume: Volume,
 }
 
 /// An organizational marker component that should be added to a spawned [`AudioPlayer`] if it's in the
@@ -36,9 +43,16 @@ pub fn sound_effect(handle: Handle<AudioSource>) -> impl Bundle {
 /// [`GlobalVolume`] doesn't apply to already-running audio entities, so this system will update them.
 fn apply_global_volume(
     global_volume: Res<GlobalVolume>,
-    mut audio_query: Query<(&PlaybackSettings, &mut AudioSink)>,
+    channel_volume: Res<ChannelVolume>,
+    mut q_sfx: Query<(&PlaybackSettings, &mut AudioSink), (With<SoundEffect>, Without<Music>)>,
+    mut q_music: Query<(&PlaybackSettings, &mut AudioSink), (With<Music>, Without<SoundEffect>)>,
 ) {
-    for (playback, mut sink) in &mut audio_query {
-        sink.set_volume(global_volume.volume * playback.volume);
+    for (playback, mut sink) in &mut q_music {
+        sink.set_volume(global_volume.volume * channel_volume.music_volume * playback.volume);
+    }
+    for (playback, mut sink) in &mut q_sfx {
+        sink.set_volume(
+            global_volume.volume * channel_volume.sound_effect_volume * playback.volume,
+        );
     }
 }
