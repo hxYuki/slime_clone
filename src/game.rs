@@ -12,7 +12,7 @@ use bevy::{
 use crate::{
     AppState,
     assets_tracker::{AssetState, cleanup_resource, load_resource},
-    audio::{music, sound_effect},
+    audio::{music_bundle, sound_effect_bundle},
     gameobjects::{Bat, Room, Slime},
     ui::ui_root_despawn_on_exit,
 };
@@ -160,7 +160,7 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
     let slime = &level.slime;
     let bat = &level.bat;
     commands.spawn((
-        music(level.theme_music.clone()),
+        music_bundle(level.theme_music.clone()),
         DespawnOnExit(AppState::Game),
     ));
 
@@ -389,14 +389,14 @@ fn collision_check(
     }
 
     if play_bounce_sound {
-        commands.spawn(sound_effect(level_assets.bounce_sound.clone()));
+        commands.spawn(sound_effect_bundle(level_assets.bounce_sound.clone()));
     }
 
     if !player_bound.intersect(mob_bound).is_empty() {
         commands.trigger(PlayerScoce(player));
         commands.trigger(MobDestroyed(mob));
 
-        commands.spawn(sound_effect(level_assets.collect_sound.clone()));
+        commands.spawn(sound_effect_bundle(level_assets.collect_sound.clone()));
     }
 
     fn touch_room_edge(item: Rect, room_bound: Rect) -> Vec<RoomEdge> {

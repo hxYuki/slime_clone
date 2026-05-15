@@ -6,7 +6,7 @@ edition = "2024"
 
 [dependencies]
 # Use only features needed for a 2D game to improve compile time and size
-bevy = { git="https://github.com/hxYuki/bevy", rev="319c769e8", default-features = false, features = ["2d","audio-all-formats", "ui"] }
+bevy = { git="https://github.com/hxYuki/bevy", rev="0de88609b", default-features = false, features = ["2d","audio-all-formats", "ui"] }
 # bevy = {path="../bevy", default-features = false, features = ["2d","audio-all-formats", "ui"] }
 rand = "0.9"
 # Compile out low-severity logs to improve performance.

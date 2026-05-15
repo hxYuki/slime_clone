@@ -105,22 +105,24 @@ impl StyledButton {
             AnimationConfig::new("focused".into(), 1..3, Duration::from_millis(300)),
         ];
 
-        bsn! {//
+        bsn! {
             Button
             ImageNode {
                 image: "images/button.png",
                 image_mode: NodeImageMode::Sliced(slicer),
-                texture_atlas: {TextureAtlasTemplate {
-                    layout: asset_value(texture_atlas),
-                    index: 0,
-                }},
+                texture_atlas: {
+                    TextureAtlasTemplate {
+                        layout: asset_value(texture_atlas),
+                        index: 0,
+                    }
+                },
             }
             template_value(AnimationCollection::new(animations.clone(), Some("default".into())))
             on(|ev: On<Pointer<Enter>>, mut command: Commands| {
                 command.trigger(ButtonFocusedEvent(ev.entity));
             })
             on(press_trigger_callback)
-            Callback({props.callback})
+            Callback({ props.callback })
             Node {
                 align_content: AlignContent::Center,
                 align_items: AlignItems::Center,
@@ -128,7 +130,7 @@ impl StyledButton {
                 justify_items: JustifyItems::Center,
             }
             Children [
-                {props.caption}
+                { props.caption },
             ]
         }
     }
@@ -152,7 +154,7 @@ pub fn font_04B_30(font_size: f32) -> impl Scene {
     bsn! {
         TextFont {
             font: FontSourceTemplate::Handle("fonts/04B_30.ttf"),
-            font_size: FontSize::Px(font_size),
+            font_size: px(font_size),
         }
     }
 }

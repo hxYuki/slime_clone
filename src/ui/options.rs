@@ -7,7 +7,9 @@ use bevy::ui_widgets::{SliderValue, ValueChange};
 use crate::audio::ChannelVolume;
 use crate::resource_notify::{ResourceChangeHandler, subscribe_to};
 use crate::title::{TitleState, change_title_state_to_main};
-use crate::ui::{StyledButton, button_text_style, font_04B_30, slider_ui, ui_root_despawn_on_exit};
+use crate::ui::{
+    InButtonGroup, StyledButton, button_text_style, font_04B_30, slider_ui, ui_root_despawn_on_exit,
+};
 
 pub fn options_ui() -> impl Scene {
     bsn! {
@@ -24,28 +26,49 @@ pub fn options_ui() -> impl Scene {
             }
             Children [
                 (
-                    Text::new("Options")
-                    font_04B_30(130.0)
+                    Node {
+                        width: percent(90),
+                    }
+                    Children [(
+                        Text::new("options")
+                        font_04B_30(70.0)
+                    )]
                 ),
                 (
                     slider_ui()
                     on(|value_changed: On<ValueChange<f32>>, mut channel_volume: ResMut<ChannelVolume>| {
                         let value = value_changed.value;
-
                         channel_volume.music_volume = Volume::Linear(value / 100.0);
                     })
                     subscribe_to::<ChannelVolume>()
-                    ResourceChangeHandler(system_value(|self_entity: In<Entity>, channel_volume: Res<ChannelVolume>, mut commands:Commands| {
-
-                        commands.entity(self_entity.0).insert(SliderValue(channel_volume.music_volume.to_linear() * 100.0));
+                    ResourceChangeHandler(system_value(|
+                        self_entity: In<Entity>,
+                        channel_volume: Res<ChannelVolume>,
+                        mut commands: Commands|
+                    {
+                        commands
+                            .entity(self_entity.0)
+                            .insert(SliderValue(channel_volume.music_volume.to_linear() * 100.0));
                     }))
                 ),
                 (
-                    :StyledButton{ //
-                        @caption: {bsn_list! {Text::new("Back") button_text_style()}},
-                        @callback: system_value(change_title_state_to_main),
+                    #ButtonGroup
+                    Node {
+                        width: percent(80),
+                        flex_direction: FlexDirection::RowReverse,
                     }
-                )
+                    Children [(
+                        : StyledButton {
+                            @caption: {
+                                bsn_list! {
+                                    Text::new("Back") button_text_style()
+                                }
+                            },
+                            @callback: system_value(change_title_state_to_main),
+                        }
+                        InButtonGroup(#ButtonGroup)
+                    )]
+                ),
             ]
         )]
     }

@@ -237,27 +237,12 @@ struct ThumbOfSlider(Entity);
 #[relationship_target(relationship = ThumbOfSlider)]
 struct SliderEntityThumb(Entity);
 
-fn slider_value_change_update_thumb_position(
-    value_change: On<ValueChange<f32>>,
-    q_slider: Query<(Entity, &SliderValue, &SliderRange, &SliderEntityThumb), With<Slider>>,
-    mut q_thumb: Query<&mut Node, With<SliderThumb>>,
-) {
-    q_slider
-        .get(value_change.source)
-        .and_then(|(slider, _, range, SliderEntityThumb(thumb))| {
-            q_thumb.get_mut(*thumb).map(|mut node| {
-                node.left = percent(range.thumb_position(value_change.value) * 100.0);
-            })
-        })
-        .unwrap();
-}
-
 fn update_slider_thumb_position(
-    mut sliders: Query<(&SliderValue, &SliderRange, &SliderEntityThumb), Changed<SliderValue>>,
+    sliders: Query<(&SliderValue, &SliderRange, &SliderEntityThumb), Changed<SliderValue>>,
     mut q_thumb: Query<&mut Node, With<SliderThumb>>,
 ) {
     sliders
-        .iter_mut()
+        .iter()
         .for_each(|(value, range, SliderEntityThumb(thumb))| {
             if let Ok(mut node) = q_thumb.get_mut(*thumb) {
                 node.left = percent(range.thumb_position(value.0) * 100.0);

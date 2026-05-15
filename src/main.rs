@@ -2,6 +2,7 @@ mod assets_tracker;
 mod audio;
 mod game;
 mod gameobjects;
+mod resource_notify;
 mod sprite_animation;
 mod title;
 mod ui;
@@ -10,7 +11,6 @@ use bevy::app::AppExit;
 use bevy::asset::AssetMetaCheck;
 use bevy::ecs::template::template;
 use bevy::prelude::*;
-use bevy::scene::{CommandsSceneExt, bsn};
 
 use crate::game::game_plugin;
 use crate::ui::ui_root_despawn_on_exit;
@@ -55,9 +55,16 @@ impl Plugin for AppPlugin {
 
         app.init_state::<AppState>();
 
-        app.add_plugins((assets_tracker::plugin, audio::plugin, ui::plugin));
+        // functional plugins
+        app.add_plugins((
+            assets_tracker::plugin,
+            audio::plugin,
+            ui::plugin,
+            sprite_animation::plugin,
+        ));
 
-        app.add_plugins((title::plugin, game_plugin, sprite_animation::plugin));
+        // content plugins
+        app.add_plugins((title::plugin, game_plugin));
 
         app.add_systems(Startup, spawn_camera);
 
@@ -84,4 +91,8 @@ fn spawn_camera(mut command: Commands) {
 
 pub fn change_state_to_game(mut next_state: ResMut<NextState<AppState>>) {
     NextState::set_if_neq(&mut next_state, AppState::Game);
+}
+
+pub fn change_state_to_title(mut next_state: ResMut<NextState<AppState>>) {
+    NextState::set_if_neq(&mut next_state, AppState::Title);
 }

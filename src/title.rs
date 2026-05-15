@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 use crate::{
     AppState,
+    audio::music,
     ui::{self, options_ui, ui_root_despawn_on_exit},
 };
 
@@ -9,8 +10,8 @@ use crate::{
 #[source(AppState = AppState::Title)]
 #[states(scoped_entities)]
 pub enum TitleState {
-    #[default]
     Main,
+    #[default]
     Option,
 }
 
@@ -28,24 +29,32 @@ pub fn plugin(app: &mut App) {
 }
 
 fn setup_title(mut command: Commands) {
-    command.spawn_scene(bsn! {
-                            ui_root_despawn_on_exit(TitleState::Main)
-                            Children [ui::title_ui()]
-                        });
+    command.spawn_scene_list(bsn_list! {
+                                 (
+                                     ui_root_despawn_on_exit(TitleState::Main)
+                                     Children [ui::title_ui()]
+                                 ),
+                             });
 }
 
-fn title_background() -> impl Scene {
-    bsn! {
-        Sprite {
-            image: "images/background-pattern.png",
-            image_mode: SpriteImageMode::Tiled {
-                tile_x: true,
-                tile_y: true,
-                stretch_value: 0.25,
-            },
-        }
-        AnimatedBackground
-        template_value(DespawnOnExit(AppState::Title))
+fn title_background() -> impl SceneList {
+    bsn_list! {
+        (
+            Sprite {
+                image: "images/background-pattern.png",
+                image_mode: SpriteImageMode::Tiled {
+                    tile_x: true,
+                    tile_y: true,
+                    stretch_value: 0.25,
+                },
+            }
+            AnimatedBackground
+            template_value(DespawnOnExit(AppState::Title))
+        ),
+        (
+            music("audio/music/theme.ogg")
+            template_value(DespawnOnExit(AppState::Title))
+        ),
     }
 }
 
