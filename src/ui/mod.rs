@@ -1,6 +1,8 @@
 mod options;
 mod title;
 
+use std::time::Duration;
+
 use bevy::{
     ecs::{
         component::Component,
@@ -8,8 +10,9 @@ use bevy::{
         observer::On,
         relationship::RelationshipSourceCollection,
         system::SystemId,
-        template::{FromTemplate, system_value},
+        template::{FromTemplate, SystemIdTemplate, system_value},
     },
+    image::TextureAtlasTemplate,
     picking::hover::Hovered,
     prelude::*,
     scene::{Scene, bsn, template_value},
@@ -20,7 +23,10 @@ use bevy::{
 pub use options::*;
 pub use title::*;
 
-use crate::sprite_animation::AnimationCollection;
+use crate::{
+    resource_notify::ResourceChangeHandler,
+    sprite_animation::{AnimationCollection, AnimationConfig},
+};
 
 pub fn ui_root() -> impl Scene {
     bsn! {
@@ -41,22 +47,26 @@ pub fn ui_root_despawn_on_exit<S: States + Default + Clone + Unpin>(state: S) ->
 pub fn plugin(app: &mut App) {
     // app.init_resource::<RegisterQuery>();
 
-    app.add_observer(handle_button_group_focus)
+    app
+        // .add_observer(handle_button_group_focus)
+        // .add_systems(
+        //     Update,
+        //     (switch_button_focus_animation, trigger_focused_button),
+        // )
         .add_systems(
             Update,
-            (switch_button_focus_animation, trigger_focused_button),
-        )
-        .add_systems(Update, update_slider_thumb_position);
+            (update_slider_thumb_position, trigger_focused_button),
+        );
 }
 
 #[derive(Component, Debug, FromTemplate)]
-#[relationship(relationship_target = ButtonGroup)]
+#[relationship(relationship_target = FocusGroup)]
 #[require(ButtonGroupFocused)]
-pub struct InButtonGroup(Entity);
+pub struct InFocusGroup(Entity);
 
 #[derive(Component, Debug, FromTemplate)]
-#[relationship_target(relationship = InButtonGroup)]
-pub struct ButtonGroup(Vec<Entity>);
+#[relationship_target(relationship = InFocusGroup)]
+pub struct FocusGroup(Vec<Entity>);
 
 #[derive(Component, Debug, Clone, Default)]
 pub struct ButtonGroupFocused(pub bool);
@@ -82,32 +92,58 @@ pub fn press_trigger_callback(
         );
 }
 
-fn handle_button_group_focus(
-    focused: On<ButtonFocusedEvent>,
-    button_groups: Query<(Entity, &ButtonGroup)>,
-    mut buttons: Query<(Entity, &InButtonGroup, &mut ButtonGroupFocused)>,
-) {
-    let button = focused.0;
-    let Ok((button, InButtonGroup(button_group), mut focused)) = buttons.get_mut(button) else {
-        return;
-    };
-    if focused.0 {
-        return;
-    }
+// fn handle_button_group_focus(
+//     focused: On<ButtonFocusedEvent>,
+//     button_groups: Query<(Entity, &ButtonGroup)>,
+//     mut buttons: Query<(Entity, &InButtonGroup, &mut ButtonGroupFocused)>,
+// ) {
+//     let button = focused.0;
+//     let Ok((button, InButtonGroup(button_group), mut focused)) = buttons.get_mut(button) else {
+//         return;
+//     };
+//     if focused.0 {
+//         return;
+//     }
+//
+//     focused.0 = true;
+//
+//     button_groups
+//         .get(*button_group)
+//         .map(|(_, group)| &group.0)
+//         .unwrap_or(&Vec::new())
+//         .iter()
+//         .filter(|&b| b != button)
+//         .for_each(|b| {
+//             if let Ok((_, _, mut focused)) = buttons.get_mut(b) {
+//                 focused.0 = false;
+//             }
+//         });
+// }
 
-    focused.0 = true;
+pub fn change_button_focus(
+    focused: On<Pointer<Enter>>,
+    mut buttons: Query<(Entity, &InFocusGroup, &mut ButtonGroupFocused)>,
+    button_groups: Query<&FocusGroup>,
+    mut command: Commands,
+) {
+    let mut button = buttons.get_mut(focused.entity).unwrap();
+    button.2.0 = true;
+
+    let button_group = button.1.0;
 
     button_groups
-        .get(*button_group)
-        .map(|(_, group)| &group.0)
-        .unwrap_or(&Vec::new())
+        .get(button_group)
+        .unwrap()
+        .0
         .iter()
-        .filter(|&b| b != button)
+        .filter(|&b| b != focused.entity)
         .for_each(|b| {
-            if let Ok((_, _, mut focused)) = buttons.get_mut(b) {
-                focused.0 = false;
+            if let Ok(mut button) = buttons.get_mut(b) {
+                button.2.0 = false;
             }
         });
+
+    command.run_system_cached(switch_button_focus_animation);
 }
 
 fn switch_button_focus_animation(
@@ -131,8 +167,8 @@ fn trigger_focused_button(
     input: Res<ButtonInput<KeyCode>>,
     gamepads: Query<(Entity, &Gamepad)>,
 
-    button_groups: Query<(Entity, &ButtonGroup, &InheritedVisibility)>,
-    buttons: Query<(Entity, &InButtonGroup, &ButtonGroupFocused, &Callback)>,
+    button_groups: Query<(Entity, &FocusGroup, &InheritedVisibility)>,
+    buttons: Query<(Entity, &InFocusGroup, &ButtonGroupFocused, &Callback)>,
 
     mut command: Commands,
 ) {
@@ -175,6 +211,38 @@ fn trigger_focused_button(
 }
 
 /// A slider component should listen a data source as SliderValue, and set it on ValueChange.
+
+#[derive(SceneComponent, Default, Clone)]
+#[scene(StyledSliderProps)]
+pub struct StyledSlider;
+
+pub struct StyledSliderProps {
+    caption: String,
+    slider_modifiers: Box<dyn Scene>,
+    resource_change_handler: SystemIdTemplate<In<Entity>>,
+}
+impl Default for StyledSliderProps {
+    fn default() -> Self {
+        Self {
+            caption: "Slider".to_string(),
+            slider_modifiers: Box::new(bsn! {
+
+                                       }),
+            resource_change_handler: system_value(|_entity: In<Entity>| {}),
+        }
+    }
+}
+
+impl StyledSlider {
+    pub fn scene(props: StyledSliderProps) -> impl Scene {
+        bsn! {
+            slider_ui()
+            { props.slider_modifiers }
+            ResourceChangeHandler({ props.resource_change_handler })
+        }
+    }
+}
+
 pub fn slider_ui() -> impl Scene {
     bsn! {
         #Slider
@@ -194,7 +262,6 @@ pub fn slider_ui() -> impl Scene {
         }
         SliderValue(100.0)
         SliderRange::new(0.0, 100.0)
-        // on(slider_value_change_update_thumb_position)
         Children [
             (
                 Node {
@@ -248,4 +315,67 @@ fn update_slider_thumb_position(
                 node.left = percent(range.thumb_position(value.0) * 100.0);
             }
         });
+}
+
+#[derive(SceneComponent, Default, Clone)]
+#[scene(StyledButtonProps)]
+pub struct StyledButton;
+impl StyledButton {
+    pub fn scene(props: StyledButtonProps) -> impl Scene {
+        let slicer = TextureSlicer {
+            border: BorderRect::axes(10.0, 6.0),
+            max_corner_scale: 4.0,
+            ..default()
+        };
+
+        let texture_atlas =
+            TextureAtlasLayout::from_grid(UVec2::new(65, 15), 1, 3, Some(UVec2::new(0, 1)), None);
+
+        let animations = [
+            AnimationConfig::new("default".into(), 0..1, Duration::from_millis(300)),
+            AnimationConfig::new("focused".into(), 1..3, Duration::from_millis(300)),
+        ];
+
+        bsn! {
+            Button
+            ImageNode {
+                image: "images/button.png",
+                image_mode: NodeImageMode::Sliced(slicer),
+                texture_atlas: { TextureAtlasTemplate {
+                    layout: asset_value(texture_atlas),
+                    index: 0,
+                } },
+            }
+            template_value(AnimationCollection::new(animations.clone(), Some("default".into())))
+            // on(|ev: On<Pointer<Enter>>, mut command: Commands| {
+            //     command.trigger(ButtonFocusedEvent(ev.entity));
+            // })
+            on(change_button_focus)
+            on(press_trigger_callback)
+            Callback({ props.callback })
+            Node {
+                align_content: AlignContent::Center,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                justify_items: JustifyItems::Center,
+            }
+            Children [
+                { props.caption },
+            ]
+        }
+    }
+}
+pub struct StyledButtonProps {
+    pub caption: Box<dyn SceneList>,
+    pub callback: SystemIdTemplate,
+}
+impl Default for StyledButtonProps {
+    fn default() -> Self {
+        Self {
+            caption: Box::new(bsn! {
+                                  Text::new("Button")
+                              }),
+            callback: system_value(|| {}),
+        }
+    }
 }

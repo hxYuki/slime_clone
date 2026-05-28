@@ -12,7 +12,10 @@ use crate::{
     change_state_to_game,
     sprite_animation::{AnimationCollection, AnimationConfig},
     title::change_title_state_to_option,
-    ui::{ButtonFocusedEvent, ButtonGroupFocused, Callback, InButtonGroup, press_trigger_callback},
+    ui::{
+        ButtonFocusedEvent, ButtonGroupFocused, Callback, InFocusGroup, StyledButton,
+        change_button_focus, press_trigger_callback,
+    },
 };
 
 pub fn title_ui() -> impl Scene {
@@ -56,19 +59,23 @@ pub fn title_ui() -> impl Scene {
                 }
                 Children [
                     (
-                        :StyledButton{
-                            @caption: {bsn_list! {Text::new("Start") button_text_style()}},
+                        @StyledButton {
+                            @caption: { bsn_list! {
+                                Text::new("Start") button_text_style()
+                            } },
                             @callback: system_value(change_state_to_game),
                         }
                         ButtonGroupFocused(true)
-                        InButtonGroup(#MainButtonGroup)
+                        InFocusGroup(#MainButtonGroup)
                     ),
-                    ( //
-                        :StyledButton{
-                            @caption: {bsn_list! {Text::new("Options") button_text_style()}},
+                    (
+                        @StyledButton {
+                            @caption: { bsn_list! {
+                                Text::new("Options") button_text_style()
+                            } },
                             @callback: system_value(change_title_state_to_option),
                         }
-                        InButtonGroup(#MainButtonGroup)
+                        InFocusGroup(#MainButtonGroup)
                     ),
                 ]
             ),
@@ -83,70 +90,6 @@ pub fn button_text_style() -> impl Scene {
             margin: UiRect::axes(px(35.0), px(5.0)),
         }
         font_04B_30(25.0)
-    }
-}
-
-#[derive(SceneComponent, Default, Clone)]
-#[scene(StyledButtonProps)]
-pub struct StyledButton;
-impl StyledButton {
-    pub fn scene(props: StyledButtonProps) -> impl Scene {
-        let slicer = TextureSlicer {
-            border: BorderRect::axes(10.0, 6.0),
-            max_corner_scale: 4.0,
-            ..default()
-        };
-
-        let texture_atlas =
-            TextureAtlasLayout::from_grid(UVec2::new(65, 15), 1, 3, Some(UVec2::new(0, 1)), None);
-
-        let animations = [
-            AnimationConfig::new("default".into(), 0..1, Duration::from_millis(300)),
-            AnimationConfig::new("focused".into(), 1..3, Duration::from_millis(300)),
-        ];
-
-        bsn! {
-            Button
-            ImageNode {
-                image: "images/button.png",
-                image_mode: NodeImageMode::Sliced(slicer),
-                texture_atlas: {
-                    TextureAtlasTemplate {
-                        layout: asset_value(texture_atlas),
-                        index: 0,
-                    }
-                },
-            }
-            template_value(AnimationCollection::new(animations.clone(), Some("default".into())))
-            on(|ev: On<Pointer<Enter>>, mut command: Commands| {
-                command.trigger(ButtonFocusedEvent(ev.entity));
-            })
-            on(press_trigger_callback)
-            Callback({ props.callback })
-            Node {
-                align_content: AlignContent::Center,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                justify_items: JustifyItems::Center,
-            }
-            Children [
-                { props.caption },
-            ]
-        }
-    }
-}
-pub struct StyledButtonProps {
-    pub caption: Box<dyn SceneList>,
-    pub callback: SystemIdTemplate,
-}
-impl Default for StyledButtonProps {
-    fn default() -> Self {
-        Self {
-            caption: Box::new(bsn! {
-                                  Text::new("Button")
-                              }),
-            callback: system_value(|| {}),
-        }
     }
 }
 

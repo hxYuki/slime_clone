@@ -13,7 +13,7 @@ use crate::{
     AppState,
     assets_tracker::{AssetState, cleanup_resource, load_resource},
     audio::{music_bundle, sound_effect_bundle},
-    gameobjects::{Bat, Room, Slime},
+    gameobjects::{Bat, Room, Slime, room},
     ui::ui_root_despawn_on_exit,
 };
 
@@ -25,8 +25,8 @@ pub fn game_plugin(app: &mut App) {
     // ready. While `init_asset` cannot be called from `World`. So you have initialize the assets here.
     app.init_asset::<LevelAssets>()
         .init_asset::<Bat>()
-        .init_asset::<Slime>()
-        .init_asset::<Room>();
+        .init_asset::<Slime>();
+    // .init_asset::<Room>();
 
     // Load Assets
     app.add_systems(OnEnter(AppState::Game), (load_resource::<LevelAssets>,));
@@ -68,8 +68,8 @@ struct LevelAssets {
     bat: Bat,
     #[dependency]
     slime: Slime,
-    #[dependency]
-    room: Room,
+    // #[dependency]
+    // room: Room,
     #[dependency]
     theme_music: Handle<AudioSource>,
     #[dependency]
@@ -84,7 +84,7 @@ impl FromWorld for LevelAssets {
     fn from_world(world: &mut World) -> Self {
         let bat = Bat::from_world(world);
         let slime = Slime::from_world(world);
-        let room = Room::from_world(world);
+        // let room = Room::from_world(world);
 
         let asset_server = world.resource::<AssetServer>();
 
@@ -101,7 +101,7 @@ impl FromWorld for LevelAssets {
         Self {
             bat,
             slime,
-            room,
+            // room,
             theme_music,
             bounce_sound,
             collect_sound,
@@ -156,7 +156,7 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
         grid_size: 20,
         room_bound: bound,
     });
-    let room = &level.room;
+    // let room = &level.room;
     let slime = &level.slime;
     let bat = &level.bat;
     commands.spawn((
@@ -169,11 +169,16 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
                              Children [score_text()]
                          });
 
-    commands.spawn((
-        room.bundle(),
-        DespawnOnExit(AppState::Game),
-        Transform::from_scale(Vec3::splat(1.0)),
-    ));
+    // commands.spawn((
+    //     room.bundle(),
+    //     DespawnOnExit(AppState::Game),
+    //     Transform::from_scale(Vec3::splat(1.0)),
+    // ));
+    commands.spawn_scene(bsn! {
+                             :room
+                             template_value(DespawnOnExit(AppState::Game))
+                             Transform::from_scale(Vec3::splat(1.0))
+                         });
     commands
         .spawn((
             slime.bundle(),

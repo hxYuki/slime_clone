@@ -2,7 +2,37 @@ use bevy::{
     image::{ImageArrayLayout, ImageLoaderSettings},
     prelude::*,
     sprite_render::{TileData, TilemapChunk, TilemapChunkTileData},
+    ui_widgets::ScrollbarThumb,
 };
+
+// TODO: test this one
+pub fn room() -> impl Scene {
+    let tile_data = vec![
+        00, 01, 02, 01, 02, 01, 02, 01, 02, 01, 02, 01, 02, 01, 02, 03, //
+        04, 05, 05, 06, 05, 05, 06, 05, 05, 06, 05, 05, 06, 05, 05, 07, //
+        08, 09, 09, 09, 09, 09, 09, 09, 09, 09, 09, 09, 09, 09, 09, 11, //
+        04, 09, 09, 09, 09, 09, 09, 09, 10, 09, 09, 09, 09, 10, 09, 07, //
+        08, 09, 10, 09, 09, 09, 09, 09, 09, 09, 09, 09, 09, 09, 09, 11, //
+        04, 09, 09, 09, 09, 09, 09, 09, 09, 09, 09, 09, 09, 09, 09, 07, //
+        08, 10, 09, 09, 09, 09, 09, 09, 09, 09, 10, 09, 09, 09, 09, 11, //
+        04, 09, 09, 09, 09, 09, 10, 09, 09, 09, 09, 09, 09, 09, 09, 07, //
+        12, 13, 14, 13, 14, 13, 14, 13, 14, 13, 14, 13, 14, 13, 14, 15, //
+    ]
+    .iter()
+    .map(|tileset_index: &u16| Some(TileData::from_tileset_index(*tileset_index)))
+    .collect();
+
+    let chunk_size = UVec2::new(16, 9);
+
+    bsn! {
+        TilemapChunk {
+            tile_display_size: UVec2::splat(20),
+            chunk_size: chunk_size,
+            tileset: "images/tileset.png",
+        }
+        TilemapChunkTileData::from_y_down_tiles(chunk_size, tile_data)
+    }
+}
 
 #[derive(Resource, Asset, Clone, Reflect)]
 #[reflect(Resource)]
@@ -61,7 +91,7 @@ impl Room {
 
                 ..default()
             },
-            TilemapChunkTileData(self.tile_data.clone()),
+            TilemapChunkTileData::from_y_down_tiles(self.room_size, self.tile_data.clone()),
         )
     }
 }

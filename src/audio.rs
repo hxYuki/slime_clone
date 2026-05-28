@@ -56,7 +56,7 @@ pub fn music_bundle(handle: Handle<AudioSource>) -> impl Bundle {
 pub fn music(path: &'static str) -> impl Scene {
     bsn! {
         AudioPlayer({ path })
-        @PlaybackSettings::LOOP
+        PlaybackSettings::LOOP
         Music
     }
 }
@@ -77,7 +77,7 @@ pub fn sound_effect_bundle(handle: Handle<AudioSource>) -> impl Bundle {
 pub fn sound_effect(path: &'static str) -> impl Scene {
     bsn! {
         AudioPlayer({ path })
-        @PlaybackSettings::DESPAWN
+        PlaybackSettings::DESPAWN
         SoundEffect
     }
 }
