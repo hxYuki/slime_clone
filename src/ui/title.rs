@@ -1,21 +1,9 @@
-use std::time::Duration;
-
-use bevy::{
-    ecs::template::{SystemIdTemplate, system_value, template},
-    image::TextureAtlasTemplate,
-    prelude::*,
-    scene::{Scene, bsn},
-    text::FontSourceTemplate,
-};
+use bevy::{ecs::system::system_value, prelude::*, scene::Scene, text::FontSourceTemplate};
 
 use crate::{
     change_state_to_game,
-    sprite_animation::{AnimationCollection, AnimationConfig},
     title::change_title_state_to_option,
-    ui::{
-        ButtonFocusedEvent, ButtonGroupFocused, Callback, InFocusGroup, StyledButton,
-        change_button_focus, press_trigger_callback,
-    },
+    ui::{GroupFocused, InFocusGroup, StyledButton},
 };
 
 pub fn title_ui() -> impl Scene {
@@ -39,11 +27,11 @@ pub fn title_ui() -> impl Scene {
                 Children [
                     (
                         Text::new("Dungeon")
-                        font_04B_30(130.0)
+                        font_04B_30(px(130.0))
                     ),
                     (
                         Text::new("Slime")
-                        font_04B_30(130.0)
+                        font_04B_30(px(130.0))
                         Node {
                             margin: UiRect::top(px(-40.0)),
                         }
@@ -60,19 +48,29 @@ pub fn title_ui() -> impl Scene {
                 Children [
                     (
                         @StyledButton {
-                            @caption: { bsn_list! {
-                                Text::new("Start") button_text_style()
-                            } },
+                            @caption: {
+                                bsn_list! {
+                                    (
+                                        Text::new("Start")
+                                        button_text_style()
+                                    ),
+                                }
+                            },
                             @callback: system_value(change_state_to_game),
                         }
-                        ButtonGroupFocused(true)
+                        GroupFocused(true)
                         InFocusGroup(#MainButtonGroup)
                     ),
                     (
                         @StyledButton {
-                            @caption: { bsn_list! {
-                                Text::new("Options") button_text_style()
-                            } },
+                            @caption: {
+                                bsn_list! {
+                                    (
+                                        Text::new("Options")
+                                        button_text_style()
+                                    ),
+                                }
+                            },
                             @callback: system_value(change_title_state_to_option),
                         }
                         InFocusGroup(#MainButtonGroup)
@@ -89,15 +87,15 @@ pub fn button_text_style() -> impl Scene {
         Node {
             margin: UiRect::axes(px(35.0), px(5.0)),
         }
-        font_04B_30(25.0)
+        font_04B_30(px(35.0))
     }
 }
 
-pub fn font_04B_30(font_size: f32) -> impl Scene {
+pub fn font_04B_30(font_size: Val) -> impl Scene {
     bsn! {
         TextFont {
             font: FontSourceTemplate::Handle("fonts/04B_30.ttf"),
-            font_size: px(font_size),
+            font_size: font_size,
         }
     }
 }

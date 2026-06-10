@@ -175,7 +175,7 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
     //     Transform::from_scale(Vec3::splat(1.0)),
     // ));
     commands.spawn_scene(bsn! {
-                             :room
+                             room()
                              template_value(DespawnOnExit(AppState::Game))
                              Transform::from_scale(Vec3::splat(1.0))
                          });

@@ -1,5 +1,5 @@
 use bevy::audio::Volume;
-use bevy::ecs::template::system_value;
+use bevy::ecs::system::system_value;
 use bevy::prelude::*;
 use bevy::scene::prelude::*;
 use bevy::ui_widgets::{SliderValue, ValueChange};
@@ -16,6 +16,7 @@ pub fn options_ui() -> impl Scene {
     bsn! {
         ui_root_despawn_on_exit(TitleState::Option)
         Children [(
+            #Group
             Node {
                 width: percent(100),
                 height: percent(100),
@@ -32,32 +33,64 @@ pub fn options_ui() -> impl Scene {
                     }
                     Children [(
                         Text::new("options")
-                        font_04B_30(70.0)
+                        font_04B_30(px(80.0))
                     )]
                 ),
-                @StyledSlider {
-                    @caption: "Volume",
-                    @resource_change_handler: system_value(|
-                        self_entity: In<Entity>,
-                        channel_volume: Res<ChannelVolume>,
-                        mut commands: Commands|
-                    {
-                        commands
-                            .entity(self_entity.0)
-                            .insert(SliderValue(channel_volume.music_volume.to_linear() * 100.0));
-                    }),
-                    @slider_modifiers: {
-                        bsn! {
-                            on(|value_changed: On<ValueChange<f32>>, mut channel_volume: ResMut<ChannelVolume>| {
-                                let value = value_changed.value;
-                                channel_volume.music_volume = Volume::Linear(value / 100.0);
-                            })
-                            subscribe_to::<ChannelVolume>()
-                        }
-                    },
-                },
                 (
-                    #ButtonGroup
+                    @StyledSlider {
+                        @caption: "MUSIC",
+                        @resource_change_handler: system_value(|
+                            self_entity: In<Entity>,
+                            channel_volume: Res<ChannelVolume>,
+                            mut commands: Commands|
+                        {
+                            commands
+                                .entity(self_entity.0)
+                                .insert(SliderValue(channel_volume.music_volume.to_linear() * 100.0));
+                        }),
+                        @slider_modifiers: {
+                            bsn! {
+                                on(|value_changed: On<ValueChange<f32>>, mut channel_volume: ResMut<ChannelVolume>| {
+                                    let value = value_changed.value;
+                                    channel_volume.music_volume = Volume::Linear(value / 100.0);
+                                })
+                                subscribe_to::<ChannelVolume>()
+                            }
+                        },
+                    }
+                    InFocusGroup(#Group)
+                    ~Node {
+                        width: percent(80),
+                    }
+                ),
+                (
+                    @StyledSlider {
+                        @caption: "SFX",
+                        @resource_change_handler: system_value(|
+                            self_entity: In<Entity>,
+                            channel_volume: Res<ChannelVolume>,
+                            mut commands: Commands|
+                        {
+                            commands
+                                .entity(self_entity.0)
+                                .insert(SliderValue(channel_volume.sound_effect_volume.to_linear() * 100.0));
+                        }),
+                        @slider_modifiers: {
+                            bsn! {
+                                on(|value_changed: On<ValueChange<f32>>, mut channel_volume: ResMut<ChannelVolume>| {
+                                    let value = value_changed.value;
+                                    channel_volume.sound_effect_volume = Volume::Linear(value / 100.0);
+                                })
+                                subscribe_to::<ChannelVolume>()
+                            }
+                        },
+                    }
+                    InFocusGroup(#Group)
+                    ~Node {
+                        width: percent(80),
+                    }
+                ),
+                (
                     Node {
                         width: percent(80),
                         flex_direction: FlexDirection::RowReverse,
@@ -74,7 +107,7 @@ pub fn options_ui() -> impl Scene {
                             },
                             @callback: system_value(change_title_state_to_main),
                         }
-                        InFocusGroup(#ButtonGroup)
+                        InFocusGroup(#Group)
                     )]
                 ),
             ]

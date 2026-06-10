@@ -7,10 +7,12 @@ use bevy::{
     ecs::{
         component::Component,
         entity::Entity,
+        lifecycle::HookContext,
         observer::On,
         relationship::RelationshipSourceCollection,
-        system::SystemId,
-        template::{FromTemplate, SystemIdTemplate, system_value},
+        system::{SystemHandle, SystemHandleTemplate, SystemId, system_value},
+        template::FromTemplate,
+        world::DeferredWorld,
     },
     image::TextureAtlasTemplate,
     picking::hover::Hovered,
@@ -61,21 +63,29 @@ pub fn plugin(app: &mut App) {
 
 #[derive(Component, Debug, FromTemplate)]
 #[relationship(relationship_target = FocusGroup)]
-#[require(ButtonGroupFocused)]
+#[require(GroupFocused)]
 pub struct InFocusGroup(Entity);
 
 #[derive(Component, Debug, FromTemplate)]
 #[relationship_target(relationship = InFocusGroup)]
+#[component(on_add = focus_group_observer)]
 pub struct FocusGroup(Vec<Entity>);
 
+fn focus_group_observer(mut world: DeferredWorld, ctx: HookContext) {
+    world
+        .commands()
+        .entity(ctx.entity)
+        .observe(group_focus_change);
+}
+
 #[derive(Component, Debug, Clone, Default)]
-pub struct ButtonGroupFocused(pub bool);
+pub struct GroupFocused(pub bool);
 
 #[derive(Event, Debug)]
 pub struct ButtonFocusedEvent(Entity);
 
 #[derive(Component, FromTemplate)]
-pub struct Callback(SystemId);
+pub struct Callback(SystemHandle);
 
 pub fn press_trigger_callback(
     ev: On<Pointer<Press>>,
@@ -85,82 +95,111 @@ pub fn press_trigger_callback(
     buttons
         .get(ev.entity)
         .map(|action| {
-            command.run_system(action.0);
+            command.run_system(&action.0);
         })
         .expect(
             "You should only use on_press_trigger_callback on entities with a Callback component",
         );
 }
 
-// fn handle_button_group_focus(
-//     focused: On<ButtonFocusedEvent>,
-//     button_groups: Query<(Entity, &ButtonGroup)>,
-//     mut buttons: Query<(Entity, &InButtonGroup, &mut ButtonGroupFocused)>,
-// ) {
-//     let button = focused.0;
-//     let Ok((button, InButtonGroup(button_group), mut focused)) = buttons.get_mut(button) else {
-//         return;
-//     };
-//     if focused.0 {
-//         return;
-//     }
-//
-//     focused.0 = true;
-//
-//     button_groups
-//         .get(*button_group)
-//         .map(|(_, group)| &group.0)
-//         .unwrap_or(&Vec::new())
-//         .iter()
-//         .filter(|&b| b != button)
-//         .for_each(|b| {
-//             if let Ok((_, _, mut focused)) = buttons.get_mut(b) {
-//                 focused.0 = false;
-//             }
-//         });
-// }
-
-pub fn change_button_focus(
+pub fn change_control_focus(
     focused: On<Pointer<Enter>>,
-    mut buttons: Query<(Entity, &InFocusGroup, &mut ButtonGroupFocused)>,
-    button_groups: Query<&FocusGroup>,
-    mut command: Commands,
+    mut focusables: Query<(Entity, &InFocusGroup, &mut GroupFocused)>,
+    focus_groups: Query<&FocusGroup>,
+    time: Res<Time>,
+    mut commands: Commands,
 ) {
-    let mut button = buttons.get_mut(focused.entity).unwrap();
-    button.2.0 = true;
+    let Ok(mut focused_control) = focusables.get_mut(focused.entity) else {
+        return;
+    };
+    focused_control.2.0 = true;
 
-    let button_group = button.1.0;
+    let control_group = focused_control.1.0;
 
-    button_groups
-        .get(button_group)
+    focus_groups
+        .get(control_group)
         .unwrap()
         .0
         .iter()
         .filter(|&b| b != focused.entity)
         .for_each(|b| {
-            if let Ok(mut button) = buttons.get_mut(b) {
-                button.2.0 = false;
+            if let Ok(mut unfocused) = focusables.get_mut(b) {
+                unfocused.2.0 = false;
             }
         });
+    info!("Time since startup: {:?}", time.elapsed());
+}
 
-    command.run_system_cached(switch_button_focus_animation);
+#[derive(EntityEvent, Debug)]
+struct GroupFocusChangedEvent {
+    entity: Entity,
+    focus: Entity,
+}
+
+#[derive(EntityEvent, Debug)]
+struct RespondFocusChange {
+    entity: Entity,
+    focused: bool,
+}
+
+fn pointer_focus_control(
+    ev: On<Pointer<Enter>>,
+    focusables: Query<(Entity, &InFocusGroup)>,
+    mut commands: Commands,
+    time: Res<Time>,
+) {
+    if let Ok((_, in_group)) = focusables.get(ev.entity) {
+        commands
+            .entity(in_group.0)
+            .trigger(|e| GroupFocusChangedEvent {
+                entity: e,
+                focus: ev.entity,
+            });
+    }
+
+    info!("Pointer Enter time: {:?}", time.elapsed());
+}
+fn group_focus_change(
+    ev: On<GroupFocusChangedEvent>,
+    groups: Query<&FocusGroup>,
+    mut focusables: Query<(&mut GroupFocused, &InFocusGroup)>,
+    mut commands: Commands,
+    time: Res<Time>,
+) {
+    let Ok(group) = groups.get(ev.entity) else {
+        return;
+    };
+
+    group.0.iter().for_each(|b| {
+        if let Ok((mut focused, _)) = focusables.get_mut(b) {
+            focused.0 = b == ev.focus;
+        }
+
+        commands.entity(b).trigger(|e| RespondFocusChange {
+            entity: e,
+            focused: b == ev.focus,
+        });
+    });
+    info!("GroupFocusChangedEvent time: {:?}", time.elapsed());
 }
 
 fn switch_button_focus_animation(
-    mut animaiton_button: Query<
-        (&mut AnimationCollection, &ButtonGroupFocused),
-        Changed<ButtonGroupFocused>,
-    >,
+    ev: On<RespondFocusChange>,
+    mut focusables: Query<&mut AnimationCollection>,
+    time: Res<Time>,
 ) {
-    animaiton_button
-        .iter_mut()
-        .for_each(|(mut animation, ButtonGroupFocused(focused))| {
-            if *focused {
-                animation.set_current_animation("focused".to_string());
-            } else {
-                animation.set_current_animation("default".to_string());
-            }
-        });
+    if let Ok(mut animation) = focusables.get_mut(ev.entity) {
+        if ev.focused {
+            animation.set_current_animation("focused".into());
+        } else {
+            animation.set_current_animation("default".into());
+        }
+    }
+    info!("Switch animation time: {:?}", time.elapsed());
+}
+
+fn record_time(time: Res<Time>) {
+    info!("Time since startup: {:?}", time.elapsed());
 }
 
 fn trigger_focused_button(
@@ -168,7 +207,7 @@ fn trigger_focused_button(
     gamepads: Query<(Entity, &Gamepad)>,
 
     button_groups: Query<(Entity, &FocusGroup, &InheritedVisibility)>,
-    buttons: Query<(Entity, &InFocusGroup, &ButtonGroupFocused, &Callback)>,
+    buttons: Query<(Entity, &InFocusGroup, &GroupFocused, &Callback), With<Button>>,
 
     mut command: Commands,
 ) {
@@ -198,10 +237,10 @@ fn trigger_focused_button(
                 .0
                 .iter()
                 .filter_map(|b| buttons.get(b).ok())
-                .find(|(_, _, ButtonGroupFocused(focused), _)| *focused);
+                .find(|(_, _, GroupFocused(focused), _)| *focused);
 
             if let Some((_, _, _, system_callback)) = focused_button {
-                command.run_system(system_callback.0);
+                command.run_system(&system_callback.0);
             }
         }
         _ => {
@@ -219,7 +258,7 @@ pub struct StyledSlider;
 pub struct StyledSliderProps {
     caption: String,
     slider_modifiers: Box<dyn Scene>,
-    resource_change_handler: SystemIdTemplate<In<Entity>>,
+    resource_change_handler: SystemHandleTemplate<In<Entity>>,
 }
 impl Default for StyledSliderProps {
     fn default() -> Self {
@@ -235,11 +274,136 @@ impl Default for StyledSliderProps {
 
 impl StyledSlider {
     pub fn scene(props: StyledSliderProps) -> impl Scene {
+        let slicer = TextureSlicer {
+            border: BorderRect::axes(10.0, 10.0),
+            max_corner_scale: 4.0,
+            ..default()
+        };
+        let texture_atlas =
+            TextureAtlasLayout::from_grid(UVec2::new(15, 15), 1, 3, Some(UVec2::new(0, 1)), None);
+
         bsn! {
-            slider_ui()
-            { props.slider_modifiers }
-            ResourceChangeHandler({ props.resource_change_handler })
+            Node {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Stretch,
+                justify_content: JustifyContent::SpaceBetween,
+                row_gap: px(20),
+                padding: UiRect::axes(px(40), px(30)),
+            }
+            ImageNode {
+                image: "images/panel-background.png",
+                image_mode: NodeImageMode::Sliced(slicer),
+                texture_atlas: { TextureAtlasTemplate {
+                    layout: asset_value(texture_atlas),
+                    index: 1,
+                } },
+            }
+            on(pointer_focus_control)
+            on(|
+                focus: On<RespondFocusChange>,
+                mut image_nodes: Query<&mut ImageNode>,
+                q_children: Query<&Children>|
+            {
+                let image_color = if focus.focused {
+                    Color::WHITE
+                } else {
+                    Color::srgb_u32(0xC1C1C1)
+                };
+                image_nodes
+                    .get_mut(focus.entity)
+                    .map(|mut image_node| {
+                        image_node.color = image_color;
+                    })
+                    .ok();
+                q_children
+                    .iter_descendants_depth_first(focus.entity)
+                    .for_each(|child| {
+                        if let Ok(mut image_node) = image_nodes.get_mut(child) {
+                            image_node.color = image_color;
+                        }
+                    });
+            })
+            Children [
+                (
+                    Node {
+                        align_self: AlignSelf::FlexStart,
+                    }
+                    Text::new(props.caption)
+                    font_04B_30(px(80.0))
+                ),
+                (
+                    Node {
+                        width: percent(100),
+                        display: Display::Flex,
+                        flex_direction: FlexDirection::Row,
+                        justify_items: JustifyItems::Stretch,
+                    }
+                    Children [
+                        slider_knot(KnotPosition::Left, "OFF".to_string(), px(20.0)),
+                        (
+                            slider_ui()
+                            ~Node {
+                                flex_grow: 1.0,
+                            }
+                            { props.slider_modifiers }
+                            ResourceChangeHandler({ props.resource_change_handler })
+                        ),
+                        slider_knot(KnotPosition::Right, "MAX".to_string(), px(20.0)),
+                    ]
+                ),
+            ]
         }
+    }
+}
+
+enum KnotPosition {
+    Left,
+    Right,
+}
+fn slider_knot(position: KnotPosition, text: String, font_size: Val) -> impl Scene {
+    let altas_index = match position {
+        KnotPosition::Left => 2,
+        KnotPosition::Right => 3,
+    };
+    let text_margin = match position {
+        KnotPosition::Left => UiRect::left(px(10.0)),
+        KnotPosition::Right => UiRect::right(px(5.0)).with_left(px(10.0)),
+    };
+    bsn! {
+        ~Node {
+            padding: UiRect::all(px(5.0)),
+            display: Display::Flex,
+            justify_content: JustifyContent::Center,
+        }
+        ImageNode {
+            image: "images/slider.png",
+            image_mode: NodeImageMode::Sliced({ TextureSlicer {
+                border: BorderRect::axes(6.0, 6.0),
+                max_corner_scale: 4.0,
+                ..default()
+            } }),
+            texture_atlas: { TextureAtlasTemplate {
+                layout: asset_value(
+                    TextureAtlasLayout::from_grid(
+                        UVec2::new(12, 10),
+                        2,
+                        2,
+                        Some(UVec2::new(1, 1)),
+                        None,
+                    ),
+                ),
+                index: altas_index,
+            } },
+        }
+        Children [(
+            ~Node {
+                margin: { text_margin },
+            }
+            Text::new(text)
+            TextColor(Color::srgb_u32(0x465682))
+            font_04B_30(px(35))
+        )]
     }
 }
 
@@ -251,10 +415,9 @@ pub fn slider_ui() -> impl Scene {
             flex_direction: FlexDirection::Column,
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Stretch,
-            justify_items: JustifyItems::Center,
+            justify_items: JustifyItems::Stretch,
             column_gap: px(4),
-            height: px(12),
-            width: percent(30),
+            width: percent(100),
         }
         Hovered
         Slider {
@@ -262,38 +425,45 @@ pub fn slider_ui() -> impl Scene {
         }
         SliderValue(100.0)
         SliderRange::new(0.0, 100.0)
-        Children [
-            (
-                Node {
-                    height: px(6.0),
-                    border_radius: BorderRadius::all(px(3)),
-                }
-                BackgroundColor(Color::WHITE)
-            ),
-            (
-                Node {
-                    display: Display::Flex,
-                    position_type: PositionType::Absolute,
-                    left: px(0),
-                    right: px(12),
-                    top: px(0),
-                    bottom: px(0),
-                }
-                Children [(
+        Children [(
+            Node {
+                display: Display::Flex,
+                position_type: PositionType::Absolute,
+                left: px(0),
+                right: px(-4),
+                top: px(0),
+                bottom: px(0),
+                margin: UiRect::axes(px(0), px(0)),
+                padding: UiRect::axes(px(0), px(0)),
+                border: UiRect::axes(px(0), px(4)),
+            }
+            BorderColor::from(Color::srgb_u32(0x465682))
+            Children [
+                (
                     Node {
                         display: Display::Flex,
                         width: px(12),
-                        height: px(12),
+                        height: percent(100),
                         position_type: PositionType::Absolute,
                         left: percent(0),
                         border_radius: BorderRadius::MAX,
                     }
                     SliderThumb
+                ),
+                (
                     ThumbOfSlider(#Slider)
-                    BackgroundColor(Color::BLACK)
-                )]
-            ),
-        ]
+                    Node {
+                        display: Display::Flex,
+                        width: percent(100),
+                        height: percent(100),
+                        position_type: PositionType::Absolute,
+                        left: px(0),
+                        right: px(0),
+                    }
+                    BackgroundColor(Color::WHITE)
+                ),
+            ]
+        )]
     }
 }
 
@@ -306,13 +476,13 @@ struct SliderEntityThumb(Entity);
 
 fn update_slider_thumb_position(
     sliders: Query<(&SliderValue, &SliderRange, &SliderEntityThumb), Changed<SliderValue>>,
-    mut q_thumb: Query<&mut Node, With<SliderThumb>>,
+    mut q_thumb: Query<&mut Node, With<ThumbOfSlider>>,
 ) {
     sliders
         .iter()
         .for_each(|(value, range, SliderEntityThumb(thumb))| {
             if let Ok(mut node) = q_thumb.get_mut(*thumb) {
-                node.left = percent(range.thumb_position(value.0) * 100.0);
+                node.width = percent(range.thumb_position(value.0) * 100.0);
             }
         });
 }
@@ -346,11 +516,9 @@ impl StyledButton {
                     index: 0,
                 } },
             }
-            template_value(AnimationCollection::new(animations.clone(), Some("default".into())))
-            // on(|ev: On<Pointer<Enter>>, mut command: Commands| {
-            //     command.trigger(ButtonFocusedEvent(ev.entity));
-            // })
-            on(change_button_focus)
+            AnimationCollection::new(animations.clone(), Some("default".into()))
+            on(pointer_focus_control)
+            on(switch_button_focus_animation)
             on(press_trigger_callback)
             Callback({ props.callback })
             Node {
@@ -367,7 +535,7 @@ impl StyledButton {
 }
 pub struct StyledButtonProps {
     pub caption: Box<dyn SceneList>,
-    pub callback: SystemIdTemplate,
+    pub callback: SystemHandleTemplate,
 }
 impl Default for StyledButtonProps {
     fn default() -> Self {

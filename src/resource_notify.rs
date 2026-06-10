@@ -1,12 +1,15 @@
 use std::marker::PhantomData;
 
 use bevy::{
-    ecs::{lifecycle::HookContext, system::SystemId, world::DeferredWorld},
+    ecs::{
+        lifecycle::HookContext,
+        system::{SystemHandle, SystemId},
+        world::DeferredWorld,
+    },
     prelude::*,
 };
 
 fn notify_on_resource_change<R: Resource>(
-    resource: Res<R>,
     subscribers: Query<&ResourceSubscribers<R>, With<ResourceSubscribe<R>>>,
     mut commands: Commands,
 ) {
@@ -24,12 +27,19 @@ fn notify_on_resource_change<R: Resource>(
         return;
     };
 
-    if resource.is_changed() {
-        subscribers.iter().for_each(|subscriber| {
-            commands
-                .entity(*subscriber)
-                .trigger(ResourceChanged::<R>::from);
-        });
+    subscribers.iter().for_each(|subscriber| {
+        commands
+            .entity(*subscriber)
+            .trigger(ResourceChanged::<R>::from);
+    });
+}
+
+fn initial_run_on_handler_spwan(
+    handler: Query<(Entity, &ResourceChangeHandler), Added<ResourceChangeHandler>>,
+    mut commands: Commands,
+) {
+    for (entity, handler) in handler.iter() {
+        commands.run_system_with(&handler.0, entity);
     }
 }
 
@@ -56,7 +66,10 @@ impl<R: Resource> ResourceSubscribe<R> {
     pub fn on_add(mut world: DeferredWorld, _ctx: HookContext) {
         world.resource_mut::<Schedules>().add_systems(
             Update,
-            notify_on_resource_change::<R>.run_if(resource_changed::<R>),
+            (
+                initial_run_on_handler_spwan,
+                notify_on_resource_change::<R>.run_if(resource_changed::<R>),
+            ),
         );
     }
 }
@@ -89,7 +102,7 @@ impl<R: Resource> SubscribeTo<R> {
 ///
 /// The system should have an [`Entity`] as input, which is the entity context of the subscriber.
 #[derive(Component, FromTemplate)]
-pub struct ResourceChangeHandler(pub SystemId<In<Entity>, ()>);
+pub struct ResourceChangeHandler(pub SystemHandle<In<Entity>, ()>);
 
 /// Returns a [`SubscribeToTemplate`] which allows you to subscribe to changes of a resource.
 ///
@@ -121,7 +134,8 @@ impl<R: Resource> Template for SubscribeToTemplate<R> {
                 );
                 return;
             };
-            commands.run_system_with(handler.0, res_changed.entity);
+
+            commands.run_system_with(&handler.0, res_changed.entity);
         }
 
         context.entity.observe(run_handler::<R>);

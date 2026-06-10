@@ -47,6 +47,7 @@ impl Plugin for AppPlugin {
                         resizable: false,
                         resolution: (1280, 720).into(),
                         fit_canvas_to_parent: true,
+                        present_mode: bevy::window::PresentMode::AutoNoVsync,
                         ..Default::default()
                     }
                     .into(),
