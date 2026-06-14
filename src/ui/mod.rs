@@ -26,8 +26,10 @@ pub use options::*;
 pub use title::*;
 
 use crate::{
+    casacading_components,
+    region_color_screen_material::UiGreyout,
     resource_notify::ResourceChangeHandler,
-    sprite_animation::{AnimationCollection, AnimationConfig},
+    sprite_animation::{FrameAnimation, FrameAnimationSet, PlaybackMode},
 };
 
 pub fn ui_root() -> impl Scene {
@@ -185,14 +187,14 @@ fn group_focus_change(
 
 fn switch_button_focus_animation(
     ev: On<RespondFocusChange>,
-    mut focusables: Query<&mut AnimationCollection>,
+    mut focusables: Query<&mut FrameAnimationSet<ButtonAnimation>>,
     time: Res<Time>,
 ) {
     if let Ok(mut animation) = focusables.get_mut(ev.entity) {
         if ev.focused {
-            animation.set_current_animation("focused".into());
+            animation.set_state(ButtonAnimation::Focused);
         } else {
-            animation.set_current_animation("default".into());
+            animation.set_state(ButtonAnimation::Default);
         }
     }
     info!("Switch animation time: {:?}", time.elapsed());
@@ -264,9 +266,7 @@ impl Default for StyledSliderProps {
     fn default() -> Self {
         Self {
             caption: "Slider".to_string(),
-            slider_modifiers: Box::new(bsn! {
-
-                                       }),
+            slider_modifiers: Box::new(bsn! {}),
             resource_change_handler: system_value(|_entity: In<Entity>| {}),
         }
     }
@@ -291,6 +291,9 @@ impl StyledSlider {
                 row_gap: px(20),
                 padding: UiRect::axes(px(40), px(30)),
             }
+            UiGreyout {
+                enabled: true,
+            }
             ImageNode {
                 image: "images/panel-background.png",
                 image_mode: NodeImageMode::Sliced(slicer),
@@ -300,28 +303,11 @@ impl StyledSlider {
                 } },
             }
             on(pointer_focus_control)
-            on(|
-                focus: On<RespondFocusChange>,
-                mut image_nodes: Query<&mut ImageNode>,
-                q_children: Query<&Children>|
-            {
-                let image_color = if focus.focused {
-                    Color::WHITE
-                } else {
-                    Color::srgb_u32(0xC1C1C1)
-                };
-                image_nodes
-                    .get_mut(focus.entity)
-                    .map(|mut image_node| {
-                        image_node.color = image_color;
-                    })
-                    .ok();
-                q_children
-                    .iter_descendants_depth_first(focus.entity)
-                    .for_each(|child| {
-                        if let Ok(mut image_node) = image_nodes.get_mut(child) {
-                            image_node.color = image_color;
-                        }
+            on(|focus: On<RespondFocusChange>, mut commands: Commands| {
+                commands
+                    .entity(focus.entity)
+                    .insert(UiGreyout {
+                        enabled: !focus.focused,
                     });
             })
             Children [
@@ -490,6 +476,16 @@ fn update_slider_thumb_position(
 #[derive(SceneComponent, Default, Clone)]
 #[scene(StyledButtonProps)]
 pub struct StyledButton;
+
+crate::animation_state! {
+    pub enum ButtonAnimation {
+        Default,
+        Focused,
+    }
+}
+
+crate::register_frame_animation_state!(ButtonAnimation, image_node);
+
 impl StyledButton {
     pub fn scene(props: StyledButtonProps) -> impl Scene {
         let slicer = TextureSlicer {
@@ -502,8 +498,18 @@ impl StyledButton {
             TextureAtlasLayout::from_grid(UVec2::new(65, 15), 1, 3, Some(UVec2::new(0, 1)), None);
 
         let animations = [
-            AnimationConfig::new("default".into(), 0..1, Duration::from_millis(300)),
-            AnimationConfig::new("focused".into(), 1..3, Duration::from_millis(300)),
+            FrameAnimation::new(
+                "default".into(),
+                0..1,
+                Duration::from_millis(300),
+                PlaybackMode::Loop,
+            ),
+            FrameAnimation::new(
+                "focused".into(),
+                1..3,
+                Duration::from_millis(300),
+                PlaybackMode::Loop,
+            ),
         ];
 
         bsn! {
@@ -516,7 +522,10 @@ impl StyledButton {
                     index: 0,
                 } },
             }
-            AnimationCollection::new(animations.clone(), Some("default".into()))
+            template_value(FrameAnimationSet::<ButtonAnimation>::new(
+                ButtonAnimation::Default,
+                animations.clone(),
+            ))
             on(pointer_focus_control)
             on(switch_button_focus_animation)
             on(press_trigger_callback)
@@ -541,8 +550,8 @@ impl Default for StyledButtonProps {
     fn default() -> Self {
         Self {
             caption: Box::new(bsn! {
-                                  Text::new("Button")
-                              }),
+                Text::new("Button")
+            }),
             callback: system_value(|| {}),
         }
     }

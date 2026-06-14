@@ -1,8 +1,10 @@
 mod assets_tracker;
 mod audio;
 mod bsn_asset_with_settings;
+mod casacading_components;
 mod game;
 mod gameobjects;
+mod region_color_screen_material;
 mod resource_notify;
 mod sprite_animation;
 mod title;
@@ -10,10 +12,12 @@ mod ui;
 
 use bevy::app::AppExit;
 use bevy::asset::AssetMetaCheck;
+use bevy::core_pipeline::fullscreen_material::FullscreenMaterialPlugin;
 use bevy::ecs::template::template;
 use bevy::prelude::*;
 
 use crate::game::game_plugin;
+use crate::region_color_screen_material::RegionColor;
 use crate::ui::ui_root_despawn_on_exit;
 
 fn main() -> AppExit {
@@ -56,6 +60,8 @@ impl Plugin for AppPlugin {
                 .set(ImagePlugin::default_nearest()),
         );
 
+        app.add_plugins(region_color_screen_material::plugins);
+
         app.init_state::<AppState>();
 
         // functional plugins
@@ -70,6 +76,19 @@ impl Plugin for AppPlugin {
         app.add_plugins((title::plugin, game_plugin));
 
         app.add_systems(Startup, spawn_camera);
+        app.add_systems(
+            PostStartup,
+            (|camera: Query<(&Camera, &GlobalTransform)>| {
+                let camera = camera.single().unwrap();
+                let ndc_outside = camera
+                    .0
+                    .world_to_ndc(camera.1, Vec3::new(-10000000.0, -10000000.0, 0.0));
+                let ndc_inside = camera.0.world_to_ndc(camera.1, Vec3::new(10.0, 10.0, 0.0));
+
+                info!("NDC outside: {:?}, inside: {:?}", ndc_outside, ndc_inside);
+            })
+            .after(spawn_camera),
+        );
 
         // app.add_systems(
         //     Update,
@@ -89,6 +108,9 @@ fn spawn_camera(mut command: Commands) {
         Name::new("Camera"),
         Camera2d,
         Projection::Orthographic(projection),
+        RegionColor {
+            color: Color::srgb_u32(0xc1c1c1),
+        },
     ));
 }
 

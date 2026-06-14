@@ -1,7 +1,15 @@
 use std::time::Duration;
 
-use crate::sprite_animation::{AnimationCollection, AnimationConfig};
+use crate::sprite_animation::{FrameAnimation, FrameAnimationSet, PlaybackMode};
 use bevy::prelude::*;
+
+crate::animation_state! {
+    pub enum SlimeAnimation {
+        Idle,
+    }
+}
+
+crate::register_frame_animation_state!(SlimeAnimation, sprite);
 
 #[derive(Resource, Asset, Clone, Reflect)]
 #[reflect(Resource)]
@@ -9,7 +17,8 @@ pub struct Slime {
     #[dependency]
     pub(crate) texture: Handle<Image>,
     pub(crate) layout: Handle<TextureAtlasLayout>,
-    pub(crate) animations: Vec<AnimationConfig>,
+    #[reflect(ignore, clone)]
+    pub(crate) animations: Vec<FrameAnimation>,
 }
 
 impl Slime {
@@ -24,7 +33,7 @@ impl Slime {
                 ..default()
             },
             Transform::from_scale(Vec3::splat(1.0)).with_translation(Vec3::new(0.0, 0.0, 0.0)),
-            AnimationCollection::new(self.animations.clone(), Some("idle".to_string())),
+            FrameAnimationSet::<SlimeAnimation>::new(SlimeAnimation::Idle, self.animations.clone()),
         )
     }
 }
@@ -42,10 +51,11 @@ impl FromWorld for Slime {
         Self {
             texture,
             layout,
-            animations: vec![AnimationConfig::new(
+            animations: vec![FrameAnimation::new(
                 "idle".to_string(),
                 0..2,
                 Duration::from_millis(200),
+                PlaybackMode::Loop,
             )],
         }
     }
