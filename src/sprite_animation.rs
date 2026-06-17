@@ -152,6 +152,9 @@ where
     }
 }
 
+#[derive(Component, Default, Clone)]
+pub struct PauseAnimaiton;
+
 #[derive(Clone, Debug)]
 pub struct AnimationEvent<S: AnimationState> {
     pub entity: Entity,
@@ -197,7 +200,7 @@ pub fn animation_key_from_variant(variant: &str) -> String {
 
 fn update_sprite_animation<S: AnimationState>(
     mut commands: Commands,
-    mut query: Query<(Entity, &mut Sprite, &mut FrameAnimationSet<S>)>,
+    mut query: Query<(Entity, &mut Sprite, &mut FrameAnimationSet<S>), Without<PauseAnimaiton>>,
     time: Res<Time>,
 ) {
     query
@@ -219,7 +222,7 @@ fn update_sprite_animation<S: AnimationState>(
 
 fn update_image_node_animation<S: AnimationState>(
     mut commands: Commands,
-    mut query: Query<(Entity, &mut ImageNode, &mut FrameAnimationSet<S>)>,
+    mut query: Query<(Entity, &mut ImageNode, &mut FrameAnimationSet<S>), Without<PauseAnimaiton>>,
     time: Res<Time>,
 ) {
     query

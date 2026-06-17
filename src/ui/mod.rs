@@ -66,7 +66,7 @@ pub fn plugin(app: &mut App) {
 #[derive(Component, Debug, FromTemplate)]
 #[relationship(relationship_target = FocusGroup)]
 #[require(GroupFocused)]
-pub struct InFocusGroup(Entity);
+pub struct InFocusGroup(pub Entity);
 
 #[derive(Component, Debug, FromTemplate)]
 #[relationship_target(relationship = InFocusGroup)]
@@ -129,7 +129,6 @@ pub fn change_control_focus(
                 unfocused.2.0 = false;
             }
         });
-    info!("Time since startup: {:?}", time.elapsed());
 }
 
 #[derive(EntityEvent, Debug)]
@@ -148,7 +147,6 @@ fn pointer_focus_control(
     ev: On<Pointer<Enter>>,
     focusables: Query<(Entity, &InFocusGroup)>,
     mut commands: Commands,
-    time: Res<Time>,
 ) {
     if let Ok((_, in_group)) = focusables.get(ev.entity) {
         commands
@@ -158,15 +156,12 @@ fn pointer_focus_control(
                 focus: ev.entity,
             });
     }
-
-    info!("Pointer Enter time: {:?}", time.elapsed());
 }
 fn group_focus_change(
     ev: On<GroupFocusChangedEvent>,
     groups: Query<&FocusGroup>,
     mut focusables: Query<(&mut GroupFocused, &InFocusGroup)>,
     mut commands: Commands,
-    time: Res<Time>,
 ) {
     let Ok(group) = groups.get(ev.entity) else {
         return;
@@ -182,13 +177,11 @@ fn group_focus_change(
             focused: b == ev.focus,
         });
     });
-    info!("GroupFocusChangedEvent time: {:?}", time.elapsed());
 }
 
 fn switch_button_focus_animation(
     ev: On<RespondFocusChange>,
     mut focusables: Query<&mut FrameAnimationSet<ButtonAnimation>>,
-    time: Res<Time>,
 ) {
     if let Ok(mut animation) = focusables.get_mut(ev.entity) {
         if ev.focused {
@@ -197,11 +190,6 @@ fn switch_button_focus_animation(
             animation.set_state(ButtonAnimation::Default);
         }
     }
-    info!("Switch animation time: {:?}", time.elapsed());
-}
-
-fn record_time(time: Res<Time>) {
-    info!("Time since startup: {:?}", time.elapsed());
 }
 
 fn trigger_focused_button(
@@ -266,7 +254,9 @@ impl Default for StyledSliderProps {
     fn default() -> Self {
         Self {
             caption: "Slider".to_string(),
-            slider_modifiers: Box::new(bsn! {}),
+            slider_modifiers: Box::new(bsn! {
+
+                                       }),
             resource_change_handler: system_value(|_entity: In<Entity>| {}),
         }
     }
@@ -291,9 +281,6 @@ impl StyledSlider {
                 row_gap: px(20),
                 padding: UiRect::axes(px(40), px(30)),
             }
-            UiGreyout {
-                enabled: true,
-            }
             ImageNode {
                 image: "images/panel-background.png",
                 image_mode: NodeImageMode::Sliced(slicer),
@@ -303,6 +290,9 @@ impl StyledSlider {
                 } },
             }
             on(pointer_focus_control)
+            UiGreyout {
+                enabled: true,
+            }
             on(|focus: On<RespondFocusChange>, mut commands: Commands| {
                 commands
                     .entity(focus.entity)
@@ -522,10 +512,9 @@ impl StyledButton {
                     index: 0,
                 } },
             }
-            template_value(FrameAnimationSet::<ButtonAnimation>::new(
-                ButtonAnimation::Default,
-                animations.clone(),
-            ))
+            template_value(FrameAnimationSet::<
+                ButtonAnimation,
+            >::new(ButtonAnimation::Default, animations.clone()))
             on(pointer_focus_control)
             on(switch_button_focus_animation)
             on(press_trigger_callback)
@@ -550,8 +539,8 @@ impl Default for StyledButtonProps {
     fn default() -> Self {
         Self {
             caption: Box::new(bsn! {
-                Text::new("Button")
-            }),
+                                  Text::new("Button")
+                              }),
             callback: system_value(|| {}),
         }
     }

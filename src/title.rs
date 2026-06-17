@@ -10,8 +10,8 @@ use crate::{
 #[source(AppState = AppState::Title)]
 #[states(scoped_entities)]
 pub enum TitleState {
-    Main,
     #[default]
+    Main,
     Option,
 }
 

@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use bevy::{
     color::palettes::css::{GREEN, RED, WHITE},
-    ecs::template::template,
+    ecs::{system::system_value, template::template},
+    image::TextureAtlasTemplate,
     input::gamepad::{GamepadRumbleIntensity, GamepadRumbleRequest},
     platform::collections::HashMap,
     prelude::*,
@@ -13,8 +14,10 @@ use crate::{
     AppState,
     assets_tracker::{AssetState, cleanup_resource, load_resource},
     audio::{music_bundle, sound_effect_bundle},
+    change_state_to_title,
     gameobjects::{Bat, Room, Slime, room},
-    ui::ui_root_despawn_on_exit,
+    sprite_animation::PauseAnimaiton,
+    ui::{InFocusGroup, StyledButton, button_text_style, font_04B_30, ui_root_despawn_on_exit},
 };
 
 const BASE_MOVE_SPEED: f32 = 100.0;
@@ -26,8 +29,8 @@ pub fn game_plugin(app: &mut App) {
     app.init_asset::<LevelAssets>()
         .init_asset::<Bat>()
         .init_asset::<Slime>();
-    // .init_asset::<Room>();
 
+    app.add_sub_state::<GamePause>();
     // Load Assets
     app.add_systems(OnEnter(AppState::Game), (load_resource::<LevelAssets>,));
 
@@ -46,11 +49,136 @@ pub fn game_plugin(app: &mut App) {
             update_positions,
             update_transforms,
             collision_check,
-        ),
+        )
+            .run_if(in_state(GamePause::Running)),
     );
+
+    // Pause logic
+    app.add_systems(Update, (toggle_pause.run_if(escape_input)))
+        .add_systems(
+            OnEnter(GamePause::Paused),
+            (pause_animation, pause_menu.spawn()),
+        )
+        .add_systems(OnExit(GamePause::Paused), resume_animation);
 
     // Cleanup assets
     app.add_systems(OnExit(AppState::Game), (cleanup_resource::<LevelAssets>,));
+}
+
+#[derive(SubStates, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
+#[source(AppState = AppState::Game)]
+pub enum GamePause {
+    #[default]
+    Running,
+    Paused,
+}
+
+#[derive(Component, Clone, Default)]
+struct PauseAnimationWithGame;
+
+fn pause_animation(query: Query<Entity, With<PauseAnimationWithGame>>, mut commands: Commands) {
+    for entity in query.iter() {
+        commands.entity(entity).insert(PauseAnimaiton);
+    }
+}
+fn resume_animation(query: Query<Entity, With<PauseAnimationWithGame>>, mut commands: Commands) {
+    for entity in query.iter() {
+        commands.entity(entity).remove::<PauseAnimaiton>();
+    }
+}
+
+fn toggle_pause(game_pause: Res<State<GamePause>>, mut next_pause: ResMut<NextState<GamePause>>) {
+    match **game_pause {
+        GamePause::Running => next_pause.set(GamePause::Paused),
+        GamePause::Paused => next_pause.set(GamePause::Running),
+    }
+}
+
+fn escape_input(keyboard_input: Res<ButtonInput<KeyCode>>) -> bool {
+    keyboard_input.just_pressed(KeyCode::Escape)
+}
+
+fn pause_menu() -> impl Scene {
+    let slicer = TextureSlicer {
+        border: BorderRect::axes(10.0, 10.0),
+        max_corner_scale: 4.0,
+        ..default()
+    };
+    let texture_atlas =
+        TextureAtlasLayout::from_grid(UVec2::new(15, 15), 1, 3, Some(UVec2::new(0, 1)), None);
+
+    bsn! {
+        ui_root_despawn_on_exit(GamePause::Paused)
+        ~Node {
+            display: Display::Flex,
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+        }
+        Children [(
+            ImageNode {
+                image: "images/panel-background.png",
+                image_mode: NodeImageMode::Sliced(slicer),
+                texture_atlas: { TextureAtlasTemplate {
+                    layout: asset_value(texture_atlas),
+                    index: 1,
+                } },
+            }
+            Node {
+                width: percent(80),
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+            }
+            Children [
+                (
+                    Text::new("PAUSED")
+                    font_04B_30(px(80.0))
+                    Node {
+                        margin: UiRect::axes(px(40), px(20)),
+                    }
+                ),
+                (
+                    #PauseGroup
+                    Node {
+                        display: Display::Flex,
+                        flex_direction: FlexDirection::Row,
+                        justify_content: JustifyContent::SpaceBetween,
+                        margin: UiRect::axes(px(40), px(20)),
+                    }
+                    Children [
+                        (
+                            @StyledButton {
+                                @caption: {
+                                    bsn! {
+                                        Text::new("RESUME")
+                                        button_text_style()
+                                    }
+                                },
+                                @callback: system_value(|mut commands: Commands| {
+                                    commands.run_system_cached(toggle_pause);
+                                }),
+                            }
+                            InFocusGroup(#PauseGroup)
+                        ),
+                        (
+                            @StyledButton {
+                                @caption: {
+                                    bsn! {
+                                        Text::new("QUIT")
+                                        button_text_style()
+                                    }
+                                },
+                                @callback: system_value(|mut commands: Commands| {
+                                    commands.run_system_cached(change_state_to_title);
+                                }),
+                            }
+                            InFocusGroup(#PauseGroup)
+                        ),
+                    ]
+                ),
+            ]
+        )]
+    }
 }
 
 #[derive(Resource)]
@@ -187,6 +315,7 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
             Speed(100.0),
             Player,
             DespawnOnExit(AppState::Game),
+            PauseAnimationWithGame,
         ))
         .observe(player_score);
 
@@ -198,6 +327,7 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
             Speed(100.0),
             Mob,
             DespawnOnExit(AppState::Game),
+            PauseAnimationWithGame,
         ))
         .observe(mob_relocate);
 }
