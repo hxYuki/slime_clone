@@ -16,7 +16,18 @@ use bevy::{
 
 const MAX_GREYOUT_RECTS: usize = 32;
 
+#[derive(Resource)]
+struct FullscreenVertexOutputShader(#[expect(dead_code)] Handle<Shader>);
+
 pub fn plugins(app: &mut App) {
+    let fullscreen_vertex_output_shader = app
+        .world_mut()
+        .resource_mut::<AssetServer>()
+        .load("shaders/fullscreen_vertex_output.wesl");
+    app.insert_resource(FullscreenVertexOutputShader(
+        fullscreen_vertex_output_shader,
+    ));
+
     app.add_plugins(FullscreenMaterialPlugin::<RegionColorScreenMaterial>::default());
 
     app.add_systems(
@@ -143,7 +154,7 @@ pub struct RegionColorScreenMaterial {
 
 impl FullscreenMaterial for RegionColorScreenMaterial {
     fn fragment_shader() -> ShaderRef {
-        "shaders/region_color_screen_material.wgsl".into()
+        "shaders/region_color_screen_material.wesl".into()
     }
 
     fn schedule() -> impl bevy::ecs::schedule::ScheduleLabel + Clone {

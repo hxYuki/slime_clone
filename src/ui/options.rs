@@ -97,14 +97,7 @@ pub fn options_ui() -> impl Scene {
                     }
                     Children [(
                         @StyledButton {
-                            @caption: {
-                                bsn_list! {
-                                    (
-                                        Text::new("Back")
-                                        button_text_style()
-                                    ),
-                                }
-                            },
+                            @caption: { bsn_list![(Text::new("Back") button_text_style()),] },
                             @callback: system_value(change_title_state_to_main),
                         }
                         InFocusGroup(#Group)

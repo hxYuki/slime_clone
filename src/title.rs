@@ -29,16 +29,16 @@ pub fn plugin(app: &mut App) {
 }
 
 fn setup_title(mut command: Commands) {
-    command.spawn_scene_list(bsn_list! {
+    command.spawn_scene_list(bsn_list! [
                                  (
                                      ui_root_despawn_on_exit(TitleState::Main)
                                      Children [ui::title_ui()]
                                  ),
-                             });
+                             ]);
 }
 
 fn title_background() -> impl SceneList {
-    bsn_list! {
+    bsn_list! [
         (
             Sprite {
                 image: "images/background-pattern.png",
@@ -55,7 +55,7 @@ fn title_background() -> impl SceneList {
             music("audio/music/theme.ogg")
             template_value(DespawnOnExit(AppState::Title))
         ),
-    }
+    ]
 }
 
 pub fn change_title_state_to_main(mut next_state: ResMut<NextState<TitleState>>) {

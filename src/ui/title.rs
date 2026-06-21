@@ -48,14 +48,7 @@ pub fn title_ui() -> impl Scene {
                 Children [
                     (
                         @StyledButton {
-                            @caption: {
-                                bsn_list! {
-                                    (
-                                        Text::new("Start")
-                                        button_text_style()
-                                    ),
-                                }
-                            },
+                            @caption: { bsn_list![(Text::new("Start") button_text_style()),] },
                             @callback: system_value(change_state_to_game),
                         }
                         GroupFocused(true)
@@ -63,14 +56,7 @@ pub fn title_ui() -> impl Scene {
                     ),
                     (
                         @StyledButton {
-                            @caption: {
-                                bsn_list! {
-                                    (
-                                        Text::new("Options")
-                                        button_text_style()
-                                    ),
-                                }
-                            },
+                            @caption: { bsn_list![(Text::new("Options") button_text_style()),] },
                             @callback: system_value(change_title_state_to_option),
                         }
                         InFocusGroup(#MainButtonGroup)

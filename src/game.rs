@@ -54,7 +54,7 @@ pub fn game_plugin(app: &mut App) {
     );
 
     // Pause logic
-    app.add_systems(Update, (toggle_pause.run_if(escape_input)))
+    app.add_systems(Update, toggle_pause.run_if(escape_input))
         .add_systems(
             OnEnter(GamePause::Paused),
             (pause_animation, pause_menu.spawn()),
