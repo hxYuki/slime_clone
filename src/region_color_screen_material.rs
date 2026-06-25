@@ -118,7 +118,7 @@ fn ui_node_uv_rect(
     Some(Vec4::new(min.x, min.y, max.x, max.y))
 }
 
-#[derive(Component, Debug, Clone, Copy, FromTemplate)]
+#[derive(Component, Debug, Clone, Copy)]
 pub struct UiGreyout {
     pub enabled: bool,
 }
@@ -149,7 +149,8 @@ pub struct RegionColorScreenMaterial {
     rects: [Vec4; MAX_GREYOUT_RECTS],
     color: Vec4,
     rect_count: u32,
-    _padding: Vec3,
+    saturation: f32,
+    _padding: Vec2,
 }
 
 impl FullscreenMaterial for RegionColorScreenMaterial {

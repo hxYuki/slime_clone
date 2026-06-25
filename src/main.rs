@@ -4,6 +4,7 @@ mod bsn_asset_with_settings;
 mod casacading_components;
 mod game;
 mod gameobjects;
+mod material;
 mod region_color_screen_material;
 mod resource_notify;
 mod sprite_animation;
@@ -17,6 +18,7 @@ use bevy::ecs::template::template;
 use bevy::prelude::*;
 
 use crate::game::game_plugin;
+use crate::material::saturate_out_screen_material::{self, SaturateOutScreenMaterial};
 use crate::region_color_screen_material::RegionColor;
 use crate::ui::ui_root_despawn_on_exit;
 
@@ -60,7 +62,10 @@ impl Plugin for AppPlugin {
                 .set(ImagePlugin::default_nearest()),
         );
 
-        app.add_plugins(region_color_screen_material::plugins);
+        app.add_plugins((
+            region_color_screen_material::plugins,
+            saturate_out_screen_material::plugins,
+        ));
 
         app.init_state::<AppState>();
 
@@ -111,6 +116,7 @@ fn spawn_camera(mut command: Commands) {
         RegionColor {
             color: Color::srgb_u32(0xc1c1c1),
         },
+        SaturateOutScreenMaterial::new(1.0),
     ));
 }
 

@@ -1,11 +1,11 @@
 import super::fullscreen_vertex_output::FullscreenVertexOutput;
-// import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput;
 
 struct RegionColorScreenMaterial {
     rects: array<vec4<f32>, 32>,
     color: vec4<f32>,
     rect_count: u32,
-    _padding: vec3<f32>,
+    saturation: f32,
+    _padding: vec2<f32>,
 }
 
 @group(0) @binding(0) var screen_texture: texture_2d<f32>;

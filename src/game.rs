@@ -16,6 +16,7 @@ use crate::{
     audio::{music_bundle, sound_effect_bundle},
     change_state_to_title,
     gameobjects::{Bat, Room, Slime, room},
+    material::saturate_out_screen_material::SaturateOutScreenMaterial,
     sprite_animation::PauseAnimaiton,
     ui::{InFocusGroup, StyledButton, button_text_style, font_04B_30, ui_root_despawn_on_exit},
 };
@@ -54,12 +55,21 @@ pub fn game_plugin(app: &mut App) {
     );
 
     // Pause logic
-    app.add_systems(Update, toggle_pause.run_if(escape_input))
-        .add_systems(
-            OnEnter(GamePause::Paused),
-            (pause_animation, pause_menu.spawn()),
-        )
-        .add_systems(OnExit(GamePause::Paused), resume_animation);
+    app.add_systems(
+        Update,
+        (
+            toggle_pause.run_if(escape_input),
+            saturate_out_on_pause.run_if(in_state(GamePause::Paused)),
+        ),
+    )
+    .add_systems(
+        OnEnter(GamePause::Paused),
+        (pause_animation, pause_menu.spawn()),
+    )
+    .add_systems(
+        OnExit(GamePause::Paused),
+        (resume_animation, saturate_back_on_resume),
+    );
 
     // Cleanup assets
     app.add_systems(OnExit(AppState::Game), (cleanup_resource::<LevelAssets>,));
@@ -84,6 +94,21 @@ fn pause_animation(query: Query<Entity, With<PauseAnimationWithGame>>, mut comma
 fn resume_animation(query: Query<Entity, With<PauseAnimationWithGame>>, mut commands: Commands) {
     for entity in query.iter() {
         commands.entity(entity).remove::<PauseAnimaiton>();
+    }
+}
+
+fn saturate_out_on_pause(mut material: Query<&mut SaturateOutScreenMaterial>, time: Res<Time>) {
+    for mut material in material.iter_mut() {
+        if material.saturation > 0.0 {
+            material.saturation -= time.delta_secs() / 2.0;
+            material.saturation = f32::max(material.saturation, 0.0);
+        }
+    }
+}
+
+fn saturate_back_on_resume(mut material: Query<&mut SaturateOutScreenMaterial>) {
+    for mut material in material.iter_mut() {
+        material.saturation = 1.0;
     }
 }
 
