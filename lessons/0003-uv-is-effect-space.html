@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第三课：UV 是效果的坐标空间</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#172026; --muted:#65737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d5dcd8; --accent:#126e75; --good:#18794e; --bad:#b43c3c; --code:#12201f; --code-ink:#e8f4f1; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#ecf3f1; --muted:#aab7b4; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#80cbc4; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:860px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:13ch; margin:8px 0 16px; font:700 clamp(2.2rem,7vw,4.5rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:67ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    .stage { margin:24px 0; padding:18px; border:1px solid var(--line); border-radius:10px; background:var(--panel); }
+    canvas { display:block; width:100%; aspect-ratio:16/9; border-radius:7px; cursor:crosshair; image-rendering:auto; }
+    .readout { display:flex; justify-content:space-between; gap:12px; margin-top:10px; font:600 .9rem ui-monospace,SFMono-Regular,monospace; }
+    .corners { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:18px 0; color:var(--muted); font-family:ui-monospace,SFMono-Regular,monospace; }
+    .corners span:nth-child(even) { text-align:right; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:650px) { .answers { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0003 · 7 minutes</div>
+  <h1>UV 是效果的坐标空间</h1>
+  <p class="lead">你已经知道 <code>in.uv</code> 决定“在哪里采”。现在用同一坐标直接构造颜色和区域，这是独立编写 2D 效果的第一步。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>能根据 UV 条件预测它会选择画面的哪个区域。</div>
+
+  <h2>1. UV 是约定，不是魔法变量</h2>
+  <p>当前全屏 pass 的 vertex shader 产生 UV，光栅化器把它插值后交给 fragment shader。可见视口采用归一化坐标：</p>
+  <div class="corners">
+    <span>左上 (0, 0)</span><span>右上 (1, 0)</span>
+    <span>左下 (0, 1)</span><span>右下 (1, 1)</span>
+  </div>
+  <p><code>uv.x</code> 从左向右增大，<code>uv.y</code> 从上向下增大。因为范围与分辨率无关，同一段效果可以工作在不同窗口尺寸上。</p>
+
+  <h2>2. 让坐标直接变成颜色</h2>
+  <pre><code>@fragment
+fn fragment(in: FullscreenVertexOutput) -&gt; @location(0) vec4&lt;f32&gt; {
+    return vec4&lt;f32&gt;(in.uv.x, in.uv.y, 0.0, 1.0);
+}</code></pre>
+  <p>红色通道等于 x，绿色通道等于 y。移动指针，观察同一个 fragment 函数在不同 UV 输入下的输出：</p>
+  <div class="stage">
+    <canvas id="uv-canvas" width="640" height="360" aria-label="UV gradient"></canvas>
+    <div class="readout"><span id="uv-value">uv = (0.500, 0.500)</span><span id="color-value">rgb = (128, 128, 0)</span></div>
+  </div>
+
+  <h2>3. 条件就是空间选择器</h2>
+  <pre><code>// 左半屏
+if in.uv.x &lt; 0.5 { ... }
+
+// 中央矩形
+if in.uv.x &gt;= 0.25 &amp;&amp; in.uv.x &lt;= 0.75 &amp;&amp;
+   in.uv.y &gt;= 0.25 &amp;&amp; in.uv.y &lt;= 0.75 { ... }</code></pre>
+  <p>项目中的 <code>material.rects[i]</code> 正是在传递 <code>(min_x, min_y, max_x, max_y)</code>。原 shader 的四次比较就是一个“UV 是否在矩形中”的谓词。</p>
+
+  <section class="quiz" data-answer="a">
+    <strong><code>in.uv.x &lt; 0.5</code> 选择哪个区域？</strong>
+    <div class="answers">
+      <button data-choice="a">选择画面左半</button>
+      <button data-choice="b">选择画面右半</button>
+      <button data-choice="c">选择画面下半</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="b">
+    <strong>当前全屏 pass 中，右上角的 UV 是哪个？</strong>
+    <div class="answers">
+      <button data-choice="a">vec2(0.0, 1.0)</button>
+      <button data-choice="b">vec2(1.0, 0.0)</button>
+      <button data-choice="c">vec2(1.0, 1.0)</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>下一次检索：</strong>只处理右下四分之一屏幕，条件应该怎样写？直接回复一条 WESL <code>if</code> 条件，不必写完整函数。
+  </div>
+
+  <footer>
+    主来源：<a href="https://github.com/bevyengine/bevy/blob/v0.19.0/crates/bevy_core_pipeline/src/fullscreen_vertex_shader/fullscreen.wgsl">Bevy 0.19 fullscreen vertex shader</a> ·
+    <a href="0002-bindings-as-function-environment.html">上一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a><br>
+    任何概念不清楚都可以直接问我，不需要等到完成练习。
+  </footer>
+</main>
+<script>
+  const canvas = document.querySelector('#uv-canvas');
+  const ctx = canvas.getContext('2d');
+  const image = ctx.createImageData(canvas.width, canvas.height);
+  for (let y = 0; y < canvas.height; y += 1) {
+    for (let x = 0; x < canvas.width; x += 1) {
+      const index = (y * canvas.width + x) * 4;
+      image.data[index] = Math.round(255 * x / (canvas.width - 1));
+      image.data[index + 1] = Math.round(255 * y / (canvas.height - 1));
+      image.data[index + 2] = 0;
+      image.data[index + 3] = 255;
+    }
+  }
+
+  function draw(u, v) {
+    ctx.putImageData(image, 0, 0);
+    const x = u * canvas.width;
+    const y = v * canvas.height;
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 12, y); ctx.lineTo(x + 12, y);
+    ctx.moveTo(x, y - 12); ctx.lineTo(x, y + 12);
+    ctx.stroke();
+    document.querySelector('#uv-value').textContent = `uv = (${u.toFixed(3)}, ${v.toFixed(3)})`;
+    document.querySelector('#color-value').textContent = `rgb = (${Math.round(u * 255)}, ${Math.round(v * 255)}, 0)`;
+  }
+
+  canvas.addEventListener('pointermove', (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const u = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const v = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+    draw(u, v);
+  });
+  draw(0.5, 0.5);
+
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：你把数值范围映射到了画面位置。'
+          : '先确认 x 的左右方向和 y 的上下方向。';
+      });
+    });
+  });
+</script>
+</body>
+</html>

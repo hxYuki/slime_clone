@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第十二课：用组件驱动 Shader</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#172026; --muted:#65737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d5dcd8; --accent:#6d3fc0; --good:#18794e; --bad:#b43c3c; --code:#191527; --code-ink:#f3efff; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#ecf3f1; --muted:#aab7b4; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#bda2f2; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:940px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:15ch; margin:8px 0 16px; font:700 clamp(2.2rem,7vw,4.4rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:72ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    .flow { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:25px 0; }
+    .flow div { min-height:86px; display:grid; place-items:center; padding:11px; border:1px solid var(--line); border-radius:8px; background:var(--panel); text-align:center; }
+    .split { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:22px 0; }
+    .split section { padding:18px 20px; border:1px solid var(--line); border-radius:9px; }
+    .split h3 { margin:0 0 8px; color:var(--muted); font-size:.8rem; letter-spacing:.1em; text-transform:uppercase; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:760px) { .split,.answers { grid-template-columns:1fr; } .flow { grid-template-columns:1fr 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0012 · CPU Controls GPU</div>
+  <h1>用组件驱动 Shader</h1>
+  <p class="lead">上一课固定了聚光参数。本课把它们提升为 ECS 组件：游戏代码表达效果意图，同步系统把意图翻译成 uniform，fragment 继续执行同一个颜色函数。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>不修改 WESL，只给相机挂一个组件，就能把聚光移动到左侧并缩小。</div>
+
+  <h2>1. 分清两种数据</h2>
+  <div class="split">
+    <section><h3>Game-side component</h3><p><code>ScreenSpotlight</code> 表达游戏想要的中心、半径和软边。它适合被关卡、动画或交互系统修改。</p></section>
+    <section><h3>GPU transfer material</h3><p><code>RegionColorScreenMaterial</code> 镜像 uniform 字节布局。它是传输格式，不应成为玩法代码的主要接口。</p></section>
+  </div>
+  <div class="flow"><div>游戏状态</div><div>ScreenSpotlight</div><div>同步为 uniform</div><div>fragment 输出</div></div>
+
+  <h2>2. 定义效果意图组件</h2>
+  <pre><code>#[derive(Component, Clone, Copy)]
+pub struct ScreenSpotlight {
+    pub center: Vec2,
+    pub radius: f32,
+    pub softness: f32,
+}
+
+impl Default for ScreenSpotlight {
+    fn default() -&gt; Self {
+        Self {
+            center: Vec2::splat(0.5),
+            radius: 0.5,
+            softness: 0.1,
+        }
+    }
+}</code></pre>
+  <p>这里没有 <code>ratio</code>：宽高比属于渲染目标，由同步系统从 camera 推导；它不是游戏设计参数。</p>
+
+  <h2>3. 把组件映射为 Uniform</h2>
+  <p>在 camera query 中加入 <code>Option&lt;&amp;ScreenSpotlight&gt;</code>，并在循环解构中取得 <code>spotlight</code>：</p>
+  <pre><code>let spotlight = spotlight.copied().unwrap_or_default();
+
+screen_material.spotlight_center = spotlight.center;
+screen_material.spotlight_radius = spotlight.radius;
+screen_material.spotlight_softness = spotlight.softness;</code></pre>
+  <p><code>Option</code> 保留当前兼容行为：没有组件时使用上一课的默认值；有组件时由游戏覆盖。</p>
+
+  <h2>4. 在相机上声明效果</h2>
+  <pre><code>ScreenSpotlight {
+    center: Vec2::new(0.3, 0.5),
+    radius: 0.22,
+    softness: 0.04,
+},</code></pre>
+  <p>运行后，亮区应移动到屏幕左侧并明显缩小。WESL 没变，因为变化的是函数输入，不是函数定义。</p>
+
+  <section class="quiz" data-answer="a">
+    <strong><code>ScreenSpotlight</code> 最适合保存哪类数据？</strong>
+    <div class="answers">
+      <button data-choice="a">游戏效果参数</button>
+      <button data-choice="b">缓冲字节布局</button>
+      <button data-choice="c">最终像素颜色</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong>同步系统在这条管道中的职责是什么？</strong>
+    <div class="answers">
+      <button data-choice="a">组件映射材质</button>
+      <button data-choice="b">材质采样纹理</button>
+      <button data-choice="c">像素创建组件</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>实际编码：</strong>
+    <ol>
+      <li>在 <code>region_color_screen_material.rs</code> 定义公开的 <code>ScreenSpotlight</code> 组件和上述默认值。</li>
+      <li>扩展 camera query，把固定的中心、半径、软边替换为组件映射；保留现有 viewport ratio 计算。</li>
+      <li>在 <code>main.rs</code> 导入组件，并给相机添加示例参数 <code>(0.3, 0.5)</code>、<code>0.22</code>、<code>0.04</code>。</li>
+      <li>先预测画面，再运行验证。完成后告诉我“已完成”。</li>
+    </ol>
+  </div>
+
+  <footer>
+    主来源：<a href="https://docs.rs/bevy_ecs/0.19.0/bevy_ecs/component/trait.Component.html">Bevy 0.19 Component</a> ·
+    <a href="../src/region_color_screen_material.rs">项目同步系统</a> ·
+    <a href="0011-wire-mask-into-real-effect.html">上一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a><br>
+    任何概念不清楚都可以直接问我，不需要等到完成练习。
+  </footer>
+</main>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：你正在分离游戏意图、传输格式与 GPU 计算。'
+          : '沿“组件 → 同步系统 → uniform → fragment”重新检查。';
+      });
+    });
+  });
+</script>
+</body>
+</html>

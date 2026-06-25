@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第四课：Mask 控制效果强度</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#172026; --muted:#65737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d5dcd8; --accent:#126e75; --good:#18794e; --bad:#b43c3c; --code:#12201f; --code-ink:#e8f4f1; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#ecf3f1; --muted:#aab7b4; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#80cbc4; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:860px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:13ch; margin:8px 0 16px; font:700 clamp(2.2rem,7vw,4.5rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:67ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    .pipeline { display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin:24px 0; }
+    .pipeline div { padding:15px 10px; display:grid; place-items:center; min-height:76px; border:1px solid var(--line); border-radius:8px; text-align:center; }
+    .stage { display:grid; grid-template-columns:minmax(220px,420px) 1fr; gap:24px; align-items:center; margin:24px 0; padding:20px; border:1px solid var(--line); border-radius:10px; background:var(--panel); }
+    canvas { display:block; width:100%; aspect-ratio:1; border-radius:7px; }
+    label { display:block; margin:14px 0; font-weight:650; }
+    input[type="range"] { width:100%; accent-color:var(--accent); }
+    output { float:right; color:var(--muted); font-family:ui-monospace,SFMono-Regular,monospace; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:680px) { .pipeline { grid-template-columns:1fr 1fr; } .stage { grid-template-columns:1fr; } .answers { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0004 · 8 minutes</div>
+  <h1>Mask 控制效果强度</h1>
+  <p class="lead">布尔条件只能制造“开或关”的硬边界。把区域判断改造成 0 到 1 的 mask，就能平滑控制颜色变化。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>能读懂 <code>distance → smoothstep → mix</code>，并写出一个圆形软边 mask。</div>
+
+  <h2>1. Mask 是一个标量控制信号</h2>
+  <pre><code>mask = 0.0  // 完全采用效果 A
+mask = 0.5  // A、B 各占一半
+mask = 1.0  // 完全采用效果 B
+
+result = mix(A, B, mask);</code></pre>
+  <p>函数式地看，mask 把“这个 fragment 在哪里”转换成“这个 fragment 应用多少效果”。</p>
+  <div class="pipeline">
+    <div>UV 坐标</div><div>到中心的距离</div><div>0…1 mask</div><div>混合颜色</div>
+  </div>
+
+  <h2>2. 从距离生成圆形软边</h2>
+  <pre><code>let center = vec2&lt;f32&gt;(0.5, 0.5);
+let radius = 0.3;
+let softness = 0.05;
+let d = distance(in.uv, center);
+
+let mask = 1.0 - smoothstep(radius - softness, radius, d);
+color.rgb = mix(color.rgb * 0.25, color.rgb, mask);</code></pre>
+  <p>圆内距离小，mask 接近 1，保留原色；圆外距离大，mask 接近 0，采用暗色。<code>smoothstep</code> 把边缘的一段距离平滑压缩到 0…1。</p>
+
+  <div class="stage">
+    <canvas id="mask-canvas" width="360" height="360" aria-label="Circular smooth mask"></canvas>
+    <div>
+      <label>半径 <output id="radius-value">0.30</output><input id="radius" type="range" min="0.10" max="0.48" value="0.30" step="0.01"></label>
+      <label>软边 <output id="softness-value">0.05</output><input id="softness" type="range" min="0.00" max="0.20" value="0.05" step="0.01"></label>
+      <p>白色表示 mask = 1，黑色表示 mask = 0。拖动参数观察“范围”和“过渡宽度”是两个独立概念。</p>
+    </div>
+  </div>
+
+  <section class="quiz" data-answer="a">
+    <strong><code>mix(dark, original, 0.0)</code> 返回什么？</strong>
+    <div class="answers">
+      <button data-choice="a">返回较暗颜色</button>
+      <button data-choice="b">返回原始颜色</button>
+      <button data-choice="c">返回随机颜色</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong>只增大 <code>softness</code>，主要发生什么变化？</strong>
+    <div class="answers">
+      <button data-choice="a">边缘过渡变宽</button>
+      <button data-choice="b">圆形范围变大</button>
+      <button data-choice="c">中心位置变远</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>下一次检索：</strong>不看上面的代码，写两行 WESL：第一行计算 fragment 到屏幕中心的距离 <code>d</code>；第二行生成半径 0.3、软边宽度 0.05 的 mask。
+  </div>
+
+  <footer>
+    主来源：<a href="https://www.w3.org/TR/WGSL/#smoothstep-builtin">W3C WGSL smoothstep</a> ·
+    <a href="0003-uv-is-effect-space.html">上一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a><br>
+    任何概念不清楚都可以直接问我，不需要等到完成练习。
+  </footer>
+</main>
+<script>
+  const canvas = document.querySelector('#mask-canvas');
+  const ctx = canvas.getContext('2d');
+  const radiusInput = document.querySelector('#radius');
+  const softnessInput = document.querySelector('#softness');
+
+  function smoothstep(edge0, edge1, x) {
+    if (edge0 === edge1) return x < edge0 ? 0 : 1;
+    const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+    return t * t * (3 - 2 * t);
+  }
+
+  function render() {
+    const radius = Number(radiusInput.value);
+    const softness = Number(softnessInput.value);
+    const image = ctx.createImageData(canvas.width, canvas.height);
+    for (let y = 0; y < canvas.height; y += 1) {
+      for (let x = 0; x < canvas.width; x += 1) {
+        const u = x / (canvas.width - 1);
+        const v = y / (canvas.height - 1);
+        const d = Math.hypot(u - 0.5, v - 0.5);
+        const mask = 1 - smoothstep(radius - softness, radius, d);
+        const value = Math.round(mask * 255);
+        const index = (y * canvas.width + x) * 4;
+        image.data[index] = value;
+        image.data[index + 1] = value;
+        image.data[index + 2] = value;
+        image.data[index + 3] = 255;
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+    document.querySelector('#radius-value').textContent = radius.toFixed(2);
+    document.querySelector('#softness-value').textContent = softness.toFixed(2);
+  }
+
+  radiusInput.addEventListener('input', render);
+  softnessInput.addEventListener('input', render);
+  render();
+
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：你区分了 mask 的数值与它控制的视觉结果。'
+          : '回到 mix(A, B, t)：t=0 取 A，t=1 取 B。';
+      });
+    });
+  });
+</script>
+</body>
+</html>

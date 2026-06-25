@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第十四课：把时间传入 Shader</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#172026; --muted:#65737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d5dcd8; --accent:#146a8a; --good:#18794e; --bad:#b43c3c; --code:#102027; --code-ink:#e9f7fc; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#ecf3f1; --muted:#aab7b4; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#7bc2dc; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:940px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:15ch; margin:8px 0 16px; font:700 clamp(2.2rem,7vw,4.4rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:72ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    table { width:100%; border-collapse:collapse; margin:20px 0; }
+    th,td { padding:13px 11px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
+    .flow { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin:25px 0; }
+    .flow div { min-height:82px; display:grid; place-items:center; padding:11px; border:1px solid var(--line); border-radius:8px; background:var(--panel); text-align:center; }
+    .note { margin:23px 0; padding:18px 21px; border:1px solid var(--line); border-radius:9px; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:760px) { .answers { grid-template-columns:1fr; } .flow { grid-template-columns:1fr 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0014 · CPU vs GPU</div>
+  <h1>把时间传入 Shader</h1>
+  <p class="lead">上一课由 CPU 计算最终半径。本课只传递时间，让每个 fragment invocation 在 GPU 上计算同一个呼吸公式，从而看清“动画逻辑放在哪里”的取舍。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>删除标题侧半径动画系统；画面仍按相同范围和两秒周期呼吸，动画公式改由 WESL 执行。</div>
+
+  <h2>1. 两种位置，没有绝对优劣</h2>
+  <table>
+    <thead><tr><th>位置</th><th>优点</th><th>适合</th></tr></thead>
+    <tbody>
+      <tr><td>CPU</td><td>共享标量只计算一次；容易受游戏状态控制</td><td>一个半径、一个透明度、玩法动画</td></tr>
+      <tr><td>GPU</td><td>每个 invocation 可结合自己的 UV、距离或噪声</td><td>波纹、扫描线、扭曲、逐像素相位</td></tr>
+    </tbody>
+  </table>
+  <div class="note"><strong>严格来说：</strong>当前“全屏共享一个半径”的计算放在 CPU 更便宜。本课迁移到 GPU 是为了学习时间 uniform；下一课加入空间相位后，GPU 方案才会发挥真正价值。</div>
+
+  <h2>2. 用 Padding 容纳时间</h2>
+  <pre><code>// Rust 与 WESL 同步替换
+spotlight_center: Vec2 / vec2&lt;f32&gt;,
+elapsed_seconds: f32,
+_padding: f32,</code></pre>
+  <p>原来的尾部是一个 8 字节 <code>Vec2</code> padding。现在改成两个连续的 4 字节标量：一个存时间，一个继续 padding。结构总大小仍为 560 字节。</p>
+
+  <h2>3. Rust 只传递时钟</h2>
+  <pre><code>fn sync_greyout_regions_to_screen_material(
+    time: Res&lt;Time&gt;,
+    // 原有 query...
+) {
+    // 原有同步...
+    screen_material.elapsed_seconds = time.elapsed_secs_wrapped();
+}</code></pre>
+  <p><code>elapsed_secs_wrapped()</code> 会周期性回绕，避免持续增长的 <code>f32</code> 时间逐渐丢失精度；Bevy 文档明确把 shader 列为它的使用场景。</p>
+
+  <h2>4. WESL 计算半径</h2>
+  <pre><code>let pulse = sin(material.elapsed_seconds * 3.14159265) * 0.06;
+let animated_radius = material.spotlight_radius + pulse;
+
+let spotlight_mask = circular_mask(
+    in.uv,
+    material.spotlight_center,
+    animated_radius,
+    material.spotlight_softness,
+    material.ratio,
+);</code></pre>
+  <p>基础半径仍来自 <code>ScreenSpotlight</code>。时间频率为 π 弧度/秒，所以周期为两秒；振幅 <code>0.06</code> 让 <code>0.22</code> 在 <code>0.16..0.28</code> 间变化。</p>
+
+  <div class="flow"><div>wrapped time</div><div>uniform buffer</div><div>fragment sin</div><div>animated radius</div><div>circular mask</div></div>
+
+  <section class="quiz" data-answer="a">
+    <strong>当前只有一个共享半径时，哪种计算更节省？</strong>
+    <div class="answers">
+      <button data-choice="a">处理器算一次</button>
+      <button data-choice="b">每片元都计算</button>
+      <button data-choice="c">每纹理都存储</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong>把时间交给 GPU 的核心能力是什么？</strong>
+    <div class="answers">
+      <button data-choice="a">产生空间变化</button>
+      <button data-choice="b">消除字节布局</button>
+      <button data-choice="c">减少纹理采样</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>实际编码：</strong>
+    <ol>
+      <li>从 <code>title.rs</code> 删除 <code>animate_screen_spotlight</code> 及其系统注册。</li>
+      <li>在 Rust/WESL material 尾部同步加入 <code>elapsed_seconds</code>，把 <code>Vec2</code> padding 改成单个 <code>f32</code> padding。</li>
+      <li>给同步系统加入 <code>Res&lt;Time&gt;</code>，写入 <code>elapsed_secs_wrapped()</code>。</li>
+      <li>在 WESL 中计算 <code>animated_radius</code>，并传给 <code>circular_mask</code>。</li>
+      <li>运行确认动画仍保持两秒周期和原范围，然后告诉我“已完成”。</li>
+    </ol>
+  </div>
+
+  <footer>
+    主来源：<a href="https://docs.rs/bevy_time/0.19.0/bevy_time/struct.Time.html#method.elapsed_secs_wrapped">Bevy 0.19 wrapped time</a> ·
+    <a href="https://www.w3.org/TR/WGSL/#sin-builtin">WGSL sin builtin</a> ·
+    <a href="0013-animate-shader-parameter-with-time.html">上一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a><br>
+    任何概念不清楚都可以直接问我，不需要等到完成练习。
+  </footer>
+</main>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：选择计算位置要看数据是全局共享还是逐像素变化。'
+          : '比较“只算一次”与“每个 invocation 都算”的数据范围。';
+      });
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第五课：用 Mix 合成效果</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#172026; --muted:#65737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d5dcd8; --accent:#126e75; --good:#18794e; --bad:#b43c3c; --code:#12201f; --code-ink:#e8f4f1; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#ecf3f1; --muted:#aab7b4; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#80cbc4; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:850px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:12ch; margin:8px 0 16px; font:700 clamp(2.2rem,7vw,4.5rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:67ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    .formula { margin:24px 0; padding:20px; border:1px solid var(--line); border-radius:9px; background:var(--panel); text-align:center; font:650 1.06rem ui-monospace,SFMono-Regular,monospace; }
+    .mixer { margin:24px 0; padding:20px; border:1px solid var(--line); border-radius:10px; background:var(--panel); }
+    .swatches { display:grid; grid-template-columns:1fr 1.5fr 1fr; gap:12px; align-items:center; }
+    .swatch { min-height:105px; display:grid; place-items:center; border-radius:8px; color:white; font-weight:750; text-shadow:0 1px 3px #0008; }
+    #color-a { background:rgb(232,90,80); } #color-b { background:rgb(50,130,220); }
+    #mixed { background:rgb(141,110,150); }
+    .arrow { text-align:center; color:var(--muted); }
+    label { display:block; margin-top:18px; font-weight:650; }
+    input[type="range"] { width:100%; accent-color:var(--accent); }
+    output { float:right; font-family:ui-monospace,SFMono-Regular,monospace; color:var(--muted); }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:650px) { .answers,.swatches { grid-template-columns:1fr; } .arrow { transform:rotate(90deg); } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0005 · 6 minutes</div>
+  <h1>用 Mix 合成效果</h1>
+  <p class="lead">mask 只描述“应用多少”。<code>mix</code> 决定在两个候选结果之间如何合成最终颜色。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>看到 <code>mix(A, B, mask)</code> 时，能立即说出 mask 为 0、1 和中间值时的结果。</div>
+
+  <h2>1. Mix 就是线性插值</h2>
+  <div class="formula">mix(A, B, t) = A × (1 − t) + B × t</div>
+  <p><code>t = 0</code> 完全选择 A，<code>t = 1</code> 完全选择 B。中间值按比例混合。A、B 可以是标量，也可以是颜色向量。</p>
+
+  <div class="mixer">
+    <div class="swatches">
+      <div class="swatch" id="color-a">A</div>
+      <div><div class="swatch" id="mixed">mix(A, B, 0.50)</div><div class="arrow">A ←────────→ B</div></div>
+      <div class="swatch" id="color-b">B</div>
+    </div>
+    <label>t <output id="mix-value">0.50</output><input id="mix-slider" type="range" min="0" max="1" value="0.5" step="0.01"></label>
+  </div>
+
+  <h2>2. 用圆形 Mask 做聚光效果</h2>
+  <pre><code>let original = color;
+let dark = vec4&lt;f32&gt;(color.rgb * 0.25, color.a);
+
+// 圆内 mask ≈ 1，圆外 mask ≈ 0
+color = mix(dark, original, mask);</code></pre>
+  <p>圆外选择第一个参数 <code>dark</code>；圆内选择第二个参数 <code>original</code>；软边区域自动得到平滑过渡。完整数据流现在是：</p>
+  <pre><code>textureSample
+  → distance
+  → smoothstep
+  → mask
+  → mix(dark, original, mask)
+  → return</code></pre>
+
+  <section class="quiz" data-answer="a">
+    <strong><code>mix(red, blue, 0.25)</code> 更接近哪一侧？</strong>
+    <div class="answers">
+      <button data-choice="a">结果更接近红</button>
+      <button data-choice="b">结果更接近蓝</button>
+      <button data-choice="c">结果完全透明</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong>圆内 mask 为 1 时，示例代码得到什么？</strong>
+    <div class="answers">
+      <button data-choice="a">圆内保持原色</button>
+      <button data-choice="b">圆内采用暗色</button>
+      <button data-choice="c">圆内完全透明</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>下一次检索：</strong>如果想反过来让“圆内变暗、圆外保持原色”，只修改 <code>mix</code> 这一行应该怎样写？
+  </div>
+
+  <footer>
+    主来源：<a href="https://www.w3.org/TR/WGSL/#mix-builtin">W3C WGSL mix</a> ·
+    <a href="0004-mask-controls-effect-strength.html">上一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a><br>
+    任何概念不清楚都可以直接问我，不需要等到完成练习。
+  </footer>
+</main>
+<script>
+  const slider = document.querySelector('#mix-slider');
+  const mixed = document.querySelector('#mixed');
+  const a = [232, 90, 80];
+  const b = [50, 130, 220];
+  function renderMix() {
+    const t = Number(slider.value);
+    const rgb = a.map((value, index) => Math.round(value * (1 - t) + b[index] * t));
+    mixed.style.background = `rgb(${rgb.join(',')})`;
+    mixed.textContent = `mix(A, B, ${t.toFixed(2)})`;
+    document.querySelector('#mix-value').textContent = t.toFixed(2);
+  }
+  slider.addEventListener('input', renderMix);
+  renderMix();
+
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：t 越大，结果越靠近第二个参数。'
+          : '代入公式：A × (1 − t) + B × t。';
+      });
+    });
+  });
+</script>
+</body>
+</html>

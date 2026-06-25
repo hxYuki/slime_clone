@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第十五课：时间与距离生成扩散圆环</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#172026; --muted:#65737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d5dcd8; --accent:#7b3f00; --good:#18794e; --bad:#b43c3c; --code:#102027; --code-ink:#e9f7fc; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#ecf3f1; --muted:#aab7b4; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#f0b66a; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:940px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:17ch; margin:8px 0 16px; font:700 clamp(2.1rem,7vw,4.2rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:72ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    table { width:100%; border-collapse:collapse; margin:20px 0; }
+    th,td { padding:13px 11px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
+    .formula { margin:24px 0; padding:20px 23px; border-radius:9px; background:var(--panel); font:600 1rem/1.8 ui-monospace,SFMono-Regular,monospace; overflow:auto; }
+    .note { margin:23px 0; padding:18px 21px; border:1px solid var(--line); border-radius:9px; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:760px) { .answers { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0015 · Time × Space</div>
+  <h1>用时间与距离生成扩散圆环</h1>
+  <p class="lead">上一课中，所有 fragment 共享同一个动画半径。本课让每个 fragment 用自己的 <code>d</code> 参与计算，做出从聚光中心向外扩散的圆环。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>保留呼吸聚光，同时在聚光范围内看到一圈或多圈较淡的亮环向外扩散。</div>
+
+  <h2>1. 标量场：每个 fragment 的 d 不同</h2>
+  <pre><code>var delta = in.uv - material.spotlight_center;
+delta.x *= material.ratio;
+let d = length(delta);</code></pre>
+  <p><code>material.elapsed_secs</code> 对整个 draw 相同；<code>d</code> 对每个 fragment 不同。把两者放进同一个公式，就能得到真正的逐像素动画。</p>
+
+  <div class="formula">phase = d × frequency − time × speed</div>
+  <p>当时间变大时，满足同一个相位的位置会移动到更大的 <code>d</code>，所以视觉上是向外扩散。</p>
+
+  <h2>2. 把相位变成 0…1 的圆环强度</h2>
+  <pre><code>let ring_phase = d * 32.0 - material.elapsed_secs * 6.0;
+let ring_wave = 0.5 + 0.5 * sin(ring_phase);
+let ring = ring_wave * ring_wave * ring_wave * ring_wave;</code></pre>
+  <table>
+    <thead><tr><th>项</th><th>作用</th></tr></thead>
+    <tbody>
+      <tr><td><code>d * 32.0</code></td><td>空间频率：数值越大，同一距离内圆环越密。</td></tr>
+      <tr><td><code>time * 6.0</code></td><td>运动速度：数值越大，圆环扩散越快。</td></tr>
+      <tr><td><code>ring_wave^4</code></td><td>收窄亮区：让大部分位置接近 0，峰值附近保留亮环。</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. 只在聚光内叠加圆环</h2>
+  <pre><code>let original = color;
+let darken_color = vec4&lt;f32&gt;(original.rgb * 0.25, original.a);
+
+let base_radius =
+    material.spotlight_radius + sin(material.elapsed_secs * 3.1415926) * 0.06;
+
+let spotlight_mask = circular_mask(
+    in.uv,
+    material.spotlight_center,
+    base_radius,
+    material.spotlight_softness,
+    material.ratio,
+);
+
+color = mix(darken_color, original, spotlight_mask);
+
+let ring_color = vec4&lt;f32&gt;(color.rgb + vec3&lt;f32&gt;(ring * 0.25), color.a);
+color = mix(color, ring_color, ring * spotlight_mask);</code></pre>
+  <p><code>ring * spotlight_mask</code> 是保护条件：圆环强度仍由距离和时间决定，但只在聚光可见区域内影响颜色。</p>
+
+  <div class="note"><strong>函数式读法：</strong>这次管线是 <code>uv → d → phase → ring mask → mix</code>。区别在于 <code>time</code> 是共享输入，<code>d</code> 是每个 fragment 自己算出的输入。</div>
+
+  <section class="quiz" data-answer="a">
+    <strong>为什么这次适合 GPU？</strong>
+    <div class="answers">
+      <button data-choice="a">每像素值不同</button>
+      <button data-choice="b">每纹理值相同</button>
+      <button data-choice="c">每组件值相同</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong><code>d * 32.0 - time * 6.0</code> 中 <code>32.0</code> 控制什么？</strong>
+    <div class="answers">
+      <button data-choice="a">圆环空间密度</button>
+      <button data-choice="b">动画运行速度</button>
+      <button data-choice="c">颜色混合顺序</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>实际编码：</strong>
+    <ol>
+      <li>只改 <code>assets/shaders/region_color_screen_material.wesl</code>，Rust 先不要改。</li>
+      <li>在 fragment 中保留原来的矩形变灰逻辑。</li>
+      <li>在聚光逻辑附近加入 <code>d</code>、<code>ring_phase</code>、<code>ring_wave</code> 和 <code>ring</code>。</li>
+      <li>先用 <code>ring * spotlight_mask</code> 叠加亮环；如果太强，把 <code>0.25</code> 降到 <code>0.12</code>。</li>
+      <li>运行游戏，确认圆环随时间向外扩散，然后告诉我“已完成”。</li>
+    </ol>
+  </div>
+
+  <footer>
+    主来源：<a href="https://www.w3.org/TR/WGSL/#sin-builtin">WGSL sin builtin</a> ·
+    <a href="https://www.w3.org/TR/WGSL/#floating-point-builtin-functions">WGSL floating point builtins</a> ·
+    <a href="0014-move-time-into-shader-uniform.html">上一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a><br>
+    如果圆环方向、密度或亮度不符合预期，直接把 shader 片段贴给我。
+  </footer>
+</main>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：时间是共享输入，距离是逐 fragment 输入。'
+          : '看公式里哪个值会随当前 fragment 的 uv 改变。';
+      });
+    });
+  });
+</script>
+</body>
+</html>

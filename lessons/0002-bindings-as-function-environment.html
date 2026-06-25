@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第二课：Binding 是函数的外部环境</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#172026; --muted:#65737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d5dcd8; --accent:#126e75; --good:#18794e; --bad:#b43c3c; --code:#12201f; --code-ink:#e8f4f1; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#ecf3f1; --muted:#aab7b4; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#80cbc4; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:840px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:14ch; margin:8px 0 16px; font:700 clamp(2.2rem,7vw,4.5rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:67ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .correction { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    table { width:100%; border-collapse:collapse; margin:20px 0; }
+    th,td { padding:13px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:650px) { .answers { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0002 · 6 minutes</div>
+  <h1>Binding 是函数的外部环境</h1>
+  <p class="lead">你已经能追踪主数据流。本课只补一个关键缺口：没有写进入口函数参数列表的资源，仍然是 shader 的输入。</p>
+
+  <div class="correction">
+    你的注释“<code>textureSample</code> 的参数都是输入”是对的——它们是该次采样调用的输入。对整个 <code>fragment</code> 而言，后面读取的 <code>material</code> 也同样属于输入。
+  </div>
+
+  <h2>1. 把隐藏环境写成伪函数</h2>
+  <pre><code>// WESL 表面形式
+fragment(in) -&gt; color
+
+// 更完整的函数式心智模型
+fragment(
+    in,
+    environment {
+        screen_texture,
+        texture_sampler,
+        material
+    }
+) -&gt; color</code></pre>
+  <p><code>@group</code> / <code>@binding</code> 声明由 CPU/Bevy 在运行前连接资源。它们很像闭包捕获的只读环境：没有出现在参数列表里，但函数计算依赖它们。</p>
+
+  <h2>2. 给当前标识符分类</h2>
+  <table>
+    <thead><tr><th>类别</th><th>当前 shader</th><th>作用</th></tr></thead>
+    <tbody>
+      <tr><td>每次 invocation 的输入</td><td><code>in.uv</code></td><td>本次 fragment 对应的采样位置</td></tr>
+      <tr><td>绑定资源</td><td><code>screen_texture</code></td><td>保存待采样的屏幕图像数据</td></tr>
+      <tr><td>绑定资源</td><td><code>texture_sampler</code></td><td>规定过滤和越界寻址等采样方式</td></tr>
+      <tr><td>uniform 输入</td><td><code>material</code></td><td>提供矩形数量、范围和颜色参数</td></tr>
+      <tr><td>局部中间值</td><td><code>color</code>、<code>i</code>、<code>r</code></td><td>只服务于当前 invocation 的计算</td></tr>
+      <tr><td>输出</td><td><code>return color</code></td><td>写向 <code>@location(0)</code> 对应的颜色目标</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. Texture 与 Sampler 为什么分开？</h2>
+  <pre><code>textureSample(screen_texture, texture_sampler, in.uv)
+              // 数据         // 读取规则       // 位置</code></pre>
+  <p>同一张 texture 可以搭配不同 sampler：例如最近邻或线性过滤。函数式地看，<code>textureSample</code> 需要“数据、读取规则、坐标”三个输入才能产生颜色。</p>
+
+  <section class="quiz" data-answer="a">
+    <strong>对整个 fragment 而言，哪些值属于输入？</strong>
+    <div class="answers">
+      <button data-choice="a">参数加绑定资源</button>
+      <button data-choice="b">只有入口参数值</button>
+      <button data-choice="c">只有纹理坐标值</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="b">
+    <strong>Sampler 在采样调用中主要负责什么？</strong>
+    <div class="answers">
+      <button data-choice="a">保存待采样数据</button>
+      <button data-choice="b">规定采样的方式</button>
+      <button data-choice="c">提供屏幕的坐标</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>下一次检索：</strong>不看代码，回答三个问题：谁提供“采什么”、谁提供“怎么采”、谁提供“在哪里采”？把三个标识符按顺序发给我。
+  </div>
+
+  <footer>
+    主来源：<a href="https://www.w3.org/TR/WGSL/#resource-interface">W3C WGSL resource interface</a> ·
+    <a href="0001-fragment-shader-as-map.html">上一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a><br>
+    任何概念不清楚都可以直接问我，不需要等到完成练习。
+  </footer>
+</main>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：你识别出了入口参数之外的资源依赖。'
+          : '再按“数据、规则、坐标”检查一次每个名字的职责。';
+      });
+    });
+  });
+</script>
+</body>
+</html>

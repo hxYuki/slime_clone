@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第十三课：用时间制作 Shader 动画</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#172026; --muted:#65737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d5dcd8; --accent:#b44b20; --good:#18794e; --bad:#b43c3c; --code:#211713; --code-ink:#fff1e8; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#ecf3f1; --muted:#aab7b4; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#ee9b72; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:940px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:15ch; margin:8px 0 16px; font:700 clamp(2.2rem,7vw,4.4rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:72ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    .flow { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin:25px 0; }
+    .flow div { min-height:82px; display:grid; place-items:center; padding:11px; border:1px solid var(--line); border-radius:8px; background:var(--panel); text-align:center; }
+    .formula { margin:24px 0; padding:20px 23px; border-radius:9px; background:var(--panel); font:600 1rem/1.9 ui-monospace,SFMono-Regular,monospace; }
+    .note { margin:23px 0; padding:18px 21px; border:1px solid var(--line); border-radius:9px; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:760px) { .answers { grid-template-columns:1fr; } .flow { grid-template-columns:1fr 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0013 · Time as Input</div>
+  <h1>用时间制作 Shader 动画</h1>
+  <p class="lead">动画不是特殊类型的 shader。它只是让输入随时间变化：每一帧重新求值，再沿现有组件与 uniform 管道得到不同颜色。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>不修改同步系统和 WESL，让标题画面的聚光半径在 <code>0.16..0.28</code> 之间平滑呼吸。</div>
+
+  <h2>1. 把时间变成 0..1</h2>
+  <div class="formula">phase = elapsed_seconds × speed<br>sin(phase): −1..1<br>wave = (sin(phase) + 1) × 0.5&nbsp;&nbsp;→&nbsp;&nbsp;0..1</div>
+  <p><code>sin</code> 提供平滑且周期性的波。加一把范围移到 <code>0..2</code>，再乘 <code>0.5</code> 得到适合插值的 <code>0..1</code>。</p>
+
+  <h2>2. 用 Wave 选择半径</h2>
+  <div class="formula">radius = min + (max − min) × wave</div>
+  <p>这与 WESL 的 <code>mix(min, max, wave)</code> 是同一个线性插值公式。时间只负责产生 mask；插值负责把它映射到有意义的参数范围。</p>
+
+  <h2>3. 在标题内容层修改组件</h2>
+  <pre><code>fn animate_screen_spotlight(
+    time: Res&lt;Time&gt;,
+    mut spotlights: Query&lt;&amp;mut ScreenSpotlight&gt;,
+) {
+    let phase = time.elapsed_secs() * 2.0;
+    let wave = (phase.sin() + 1.0) * 0.5;
+
+    for mut spotlight in &amp;mut spotlights {
+        spotlight.radius = 0.16 + (0.28 - 0.16) * wave;
+    }
+}</code></pre>
+  <p>把系统注册到 <code>title.rs</code>，并与现有 <code>animated_background</code> 一样加上 <code>run_if(in_state(AppState::Title))</code>。标题内容拥有动画策略；渲染模块保持通用。</p>
+
+  <div class="flow"><div>elapsed time</div><div>sin 波形</div><div>半径范围</div><div>ScreenSpotlight</div><div>fragment 画面</div></div>
+
+  <h2>4. 为什么使用 Elapsed Time</h2>
+  <div class="note"><code>elapsed_secs()</code> 允许直接计算 <code>radius = f(time)</code>。无论一秒渲染多少帧，相同时刻都对应相同半径。<code>delta_secs()</code> 更适合速度积分：<code>position += velocity × delta</code>。</div>
+  <p>当前系统在 <code>Update</code> 改组件，已有同步系统在 <code>PostUpdate</code> 读取组件，所以本帧的新半径会在渲染前进入 uniform。</p>
+
+  <section class="quiz" data-answer="a">
+    <strong><code>sin(x)</code> 的输出范围是什么？</strong>
+    <div class="answers">
+      <button data-choice="a">负一到正一</button>
+      <button data-choice="b">零点到正一</button>
+      <button data-choice="c">负一到零点</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong>周期呼吸为什么适合使用 <code>elapsed_secs()</code>？</strong>
+    <div class="answers">
+      <button data-choice="a">直接求当前值</button>
+      <button data-choice="b">累计求当前值</button>
+      <button data-choice="c">随机求当前值</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>实际编码：</strong>
+    <ol>
+      <li>在 <code>title.rs</code> 导入 <code>ScreenSpotlight</code>。</li>
+      <li>实现上面的 <code>animate_screen_spotlight</code> 系统。</li>
+      <li>将它注册到 <code>Update</code>，只在 <code>AppState::Title</code> 运行。</li>
+      <li>运行游戏，确认聚光平滑扩大、缩小，并且中心与软边参数不变。完成后告诉我“已完成”。</li>
+    </ol>
+  </div>
+
+  <footer>
+    主来源：<a href="https://docs.rs/bevy_time/0.19.0/bevy_time/struct.Time.html">Bevy 0.19 Time</a> ·
+    <a href="../src/title.rs">项目标题动画系统</a> ·
+    <a href="0012-drive-shader-from-component.html">上一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a><br>
+    任何概念不清楚都可以直接问我，不需要等到完成练习。
+  </footer>
+</main>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：动画就是时间经过函数后不断产生新的参数值。'
+          : '重新沿“时间 → 波形 → 范围 → 组件”检查。';
+      });
+    });
+  });
+</script>
+</body>
+</html>

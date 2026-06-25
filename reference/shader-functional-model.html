@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shader 函数式心智模型速查</title>
+  <style>
+    :root { color-scheme: light dark; --ink:#17202a; --muted:#607080; --paper:#fbfaf7; --line:#d8d5cc; --accent:#006d77; --code:#eef3f2; }
+    @media (prefers-color-scheme: dark) { :root { --ink:#edf2f4; --muted:#a8b3bd; --paper:#15191d; --line:#374047; --accent:#83c5be; --code:#20282d; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.6 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:920px; margin:0 auto; padding:54px 30px 80px; }
+    h1 { margin:0 0 8px; font:700 clamp(2rem,5vw,3.4rem)/1.05 Georgia,"Noto Serif SC",serif; letter-spacing:-.03em; }
+    h2 { margin:44px 0 12px; font-size:1.2rem; }
+    .lead { color:var(--muted); max-width:62ch; }
+    .formula { margin:26px 0; padding:20px 24px; border-left:4px solid var(--accent); background:var(--code); font:600 1.05rem/1.8 ui-monospace,SFMono-Regular,monospace; overflow:auto; }
+    table { width:100%; border-collapse:collapse; }
+    th,td { padding:13px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.82rem; text-transform:uppercase; letter-spacing:.08em; }
+    code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+    .warning { margin-top:28px; padding:18px 22px; border:1px solid var(--line); border-radius:8px; }
+    a { color:var(--accent); }
+    footer { margin-top:48px; color:var(--muted); font-size:.9rem; }
+    @media print { main { max-width:none; padding:24px; } a { color:inherit; text-decoration:none; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Shader 函数式心智模型</h1>
+  <p class="lead">把每个 shader stage 看成大量并行调用的同一个函数。先找输入，再找变换，最后找输出。</p>
+
+  <div class="formula">
+    vertex&nbsp;&nbsp;: 顶点数据 × uniforms → 裁剪空间位置 × 插值数据<br>
+    fragment: 插值数据 × textures × uniforms → 颜色 / 深度 / discard<br>
+    compute&nbsp;: invocation id × resources → storage 写入
+  </div>
+
+  <h2>阅读顺序</h2>
+  <table>
+    <thead><tr><th>问题</th><th>WGSL / WESL 线索</th><th>函数式类比</th></tr></thead>
+    <tbody>
+      <tr><td>入口在哪里？</td><td><code>@vertex</code>、<code>@fragment</code>、<code>@compute</code></td><td>被运行时调用的顶层函数</td></tr>
+      <tr><td>每次调用的参数？</td><td>函数参数、<code>@location</code>、<code>@builtin</code></td><td>显式参数</td></tr>
+      <tr><td>所有调用共享什么？</td><td><code>@group</code> / <code>@binding</code>、uniform、texture、sampler</td><td>只读环境或闭包捕获</td></tr>
+      <tr><td>产出什么？</td><td>返回类型、<code>@location(0)</code>、storage 写入</td><td>返回值或受控副作用</td></tr>
+    </tbody>
+  </table>
+
+  <h2>绑定资源也是输入</h2>
+  <table>
+    <thead><tr><th>资源</th><th>函数式类比</th><th>常见职责</th></tr></thead>
+    <tbody>
+      <tr><td><code>texture</code></td><td>只读数据源</td><td>保存图像或其他可采样数据</td></tr>
+      <tr><td><code>sampler</code></td><td>读取策略</td><td>规定过滤和越界寻址方式</td></tr>
+      <tr><td><code>uniform</code></td><td>只读配置</td><td>提供一次 draw 中共享的小型参数</td></tr>
+    </tbody>
+  </table>
+
+  <h2>当前全屏 Pass 的 UV</h2>
+  <table>
+    <thead><tr><th>位置</th><th>UV</th><th>常用判断</th></tr></thead>
+    <tbody>
+      <tr><td>左上</td><td><code>(0, 0)</code></td><td><code>uv.x &lt; 0.5</code> 选择左半</td></tr>
+      <tr><td>右上</td><td><code>(1, 0)</code></td><td><code>uv.x &gt;= 0.5</code> 选择右半</td></tr>
+      <tr><td>左下</td><td><code>(0, 1)</code></td><td><code>uv.y &gt;= 0.5</code> 选择下半</td></tr>
+      <tr><td>右下</td><td><code>(1, 1)</code></td><td>同时满足右半与下半条件</td></tr>
+    </tbody>
+  </table>
+
+  <h2>用 Mask 组合效果</h2>
+  <table>
+    <thead><tr><th>表达式</th><th>含义</th><th>典型用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>distance(uv, center)</code></td><td>把二维位置变成标量距离</td><td>圆形、光晕、暗角</td></tr>
+      <tr><td><code>smoothstep(a, b, x)</code></td><td>把范围平滑映射到 0…1</td><td>软边、渐变阈值</td></tr>
+      <tr><td><code>mix(A, B, mask)</code></td><td>按 mask 在两个值间插值</td><td>叠加、显隐、颜色过渡</td></tr>
+    </tbody>
+  </table>
+  <div class="formula">位置 → 标量场 → 0…1 mask → mix(A, B, mask)<br>mix(A, B, t) = A × (1 − t) + B × t</div>
+
+  <h2>宽屏中的径向距离</h2>
+  <div class="formula">delta = uv − center<br>delta.x *= width / height<br>d = length(delta)</div>
+  <p>先居中再修正 x。圆形、光晕和径向暗角需要此修正；独立比较 x/y 范围的轴对齐矩形不需要。</p>
+
+  <h2>Rust → Uniform → WESL</h2>
+  <div class="formula">Rust value → ShaderType encoding → bind group → var&lt;uniform&gt; material</div>
+  <table>
+    <thead><tr><th>修改</th><th>必须同步</th></tr></thead>
+    <tbody>
+      <tr><td>增加 material 字段</td><td>Rust 与 WESL 的字段顺序和对应类型</td></tr>
+      <tr><td>增加动态参数</td><td>Rust 系统还要在运行时写入实际数值</td></tr>
+      <tr><td>改变尾部布局</td><td>重新检查 uniform 对齐与 padding</td></tr>
+    </tbody>
+  </table>
+  <p>GPU 按字节偏移读取，不认识 Rust 字段。布局不一致时可能读到隐式对齐空洞；若 shader 所需范围大于实际 buffer，通常会触发管线或绑定验证错误。</p>
+
+  <h2>圆形 Mask Helper</h2>
+  <div class="formula">uv → uv − center → x × aspect → length → smoothstep → 1 − value</div>
+  <p>把所有依赖做成显式参数，可以在不同 fragment shader 中复用，并单独推理输入输出。</p>
+
+  <h2>WESL 模块与 Bevy Asset</h2>
+  <table>
+    <thead><tr><th>机制</th><th>职责</th></tr></thead>
+    <tbody>
+      <tr><td><code>import super::module::symbol</code></td><td>描述 WESL 模块路径与要导入的符号</td></tr>
+      <tr><td><code>AssetServer.load</code></td><td>让 Bevy 0.19 的运行时 resolver 获得依赖 shader asset</td></tr>
+      <tr><td>强 <code>Handle&lt;Shader&gt;</code></td><td>保证被导入 shader 在使用期间不被释放</td></tr>
+    </tbody>
+  </table>
+  <div class="formula">ShaderRef(root) + AssetServer.load(dependency) + strong Handle + WESL import</div>
+
+  <h2>聚光效果 Tracer Bullet</h2>
+  <div class="formula">Rust parameters → mirrored uniform layout → circular_mask → mix(dark, color, mask)</div>
+  <p>先固定中心、半径与软边，只让 aspect ratio 来自真实 viewport；确认完整路径后，再把效果参数提升为游戏侧组件。</p>
+
+  <h2>组件驱动 Shader</h2>
+  <div class="formula">game state → effect component → sync system → uniform material → fragment</div>
+  <table>
+    <thead><tr><th>层</th><th>职责</th></tr></thead>
+    <tbody>
+      <tr><td>效果组件</td><td>表达游戏希望出现的效果参数</td></tr>
+      <tr><td>同步系统</td><td>结合 viewport 等渲染环境，把组件映射为 uniform</td></tr>
+      <tr><td>Material</td><td>匹配 GPU uniform 的字段顺序、类型和布局</td></tr>
+      <tr><td>Shader</td><td>对给定输入执行相同的并行颜色变换</td></tr>
+    </tbody>
+  </table>
+
+  <h2>时间驱动参数</h2>
+  <div class="formula">time → sin(time × speed) → remap to 0…1 → lerp(min, max) → component</div>
+  <p>周期效果可直接写成 <code>value = f(elapsed_time)</code>；速度积分才通常使用 <code>value += speed × delta_time</code>。CPU 修改组件后，现有同步系统和 shader 无需因动画策略而改变。</p>
+
+  <h2>CPU 动画还是 GPU 动画</h2>
+  <table>
+    <thead><tr><th>输入范围</th><th>通常放置</th><th>原因</th></tr></thead>
+    <tbody>
+      <tr><td>整个 draw 共享一个最终值</td><td>CPU / 游戏系统</td><td>只计算一次，状态控制直接</td></tr>
+      <tr><td>时间还要结合每个 fragment 的 UV</td><td>GPU / shader</td><td>每个 invocation 能产生不同空间相位</td></tr>
+    </tbody>
+  </table>
+  <div class="formula">Rust wrapped time → uniform → fragment: value = f(time, uv)</div>
+
+  <h2>时间 × 空间相位</h2>
+  <div class="formula">d = length(aspect_correct(uv − center))<br>phase = d × frequency − time × speed<br>ring = sharpen(0.5 + 0.5 × sin(phase))</div>
+  <p>这是 GPU 动画的常见形状：时间是共享输入，距离或 UV 是每个 fragment 的局部输入。改变 <code>frequency</code> 会改变圆环密度；改变 <code>speed</code> 会改变运动速度。</p>
+
+  <div class="warning">
+    <strong>类比边界：</strong>fragment 不是固定等于“一个屏幕像素”；光栅化、深度测试、MSAA 和 discard 都会改变实际调用或写入。不同 invocation 之间也没有可依赖的先后顺序。
+  </div>
+
+  <footer>
+    依据：<a href="https://www.w3.org/TR/WGSL/">W3C WGSL specification</a> ·
+    <a href="../lessons/0001-fragment-shader-as-map.html">第一课</a> ·
+    <a href="../lessons/0002-bindings-as-function-environment.html">第二课</a> ·
+    <a href="../lessons/0003-uv-is-effect-space.html">第三课</a> ·
+    <a href="../lessons/0004-mask-controls-effect-strength.html">第四课</a> ·
+    <a href="../lessons/0005-mix-composes-effects.html">第五课</a> ·
+    <a href="../lessons/0006-correct-uv-aspect-ratio.html">第六课</a> ·
+    <a href="../lessons/0007-rust-wesl-uniform-contract.html">第七课</a> ·
+    <a href="../lessons/0008-write-circular-mask-helper.html">第八课</a> ·
+    <a href="../lessons/0009-import-wesl-module.html">第九课</a> ·
+    <a href="../lessons/0010-load-imported-shader-in-bevy.html">第十课</a> ·
+    <a href="../lessons/0011-wire-mask-into-real-effect.html">第十一课</a> ·
+    <a href="../lessons/0012-drive-shader-from-component.html">第十二课</a> ·
+    <a href="../lessons/0013-animate-shader-parameter-with-time.html">第十三课</a> ·
+    <a href="../lessons/0014-move-time-into-shader-uniform.html">第十四课</a> ·
+    <a href="../lessons/0015-time-distance-ripple.html">第十五课</a>
+  </footer>
+</main>
+</body>
+</html>

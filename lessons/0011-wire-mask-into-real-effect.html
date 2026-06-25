@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第十一课：把 Mask 接入真实效果</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#172026; --muted:#65737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d5dcd8; --accent:#126e75; --good:#18794e; --bad:#b43c3c; --code:#12201f; --code-ink:#e8f4f1; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#ecf3f1; --muted:#aab7b4; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#80cbc4; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:940px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:15ch; margin:8px 0 16px; font:700 clamp(2.2rem,7vw,4.4rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:70ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    .pair { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:22px 0; }
+    .pair h3 { margin:0 0 8px; color:var(--muted); font-size:.8rem; letter-spacing:.1em; text-transform:uppercase; }
+    .pipeline { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin:25px 0; }
+    .pipeline div { min-height:82px; display:grid; place-items:center; padding:11px; border:1px solid var(--line); border-radius:8px; background:var(--panel); text-align:center; }
+    .note { margin:23px 0; padding:18px 21px; border:1px solid var(--line); border-radius:9px; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:760px) { .pair,.answers { grid-template-columns:1fr; } .pipeline { grid-template-columns:1fr 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0011 · Tracer Bullet</div>
+  <h1>把 Mask 接入真实效果</h1>
+  <p class="lead">依赖模块已经进入 Bevy。现在沿一条完整路径传递聚光参数：Rust 值 → uniform buffer → WESL material → circular_mask → 最终颜色。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>运行游戏时，屏幕中心保持原色，圆外变暗，边缘平滑且在 1280×720 下保持正圆。</div>
+
+  <h2>1. 同步扩展 Uniform 契约</h2>
+  <div class="pair">
+    <section><h3>Rust</h3><pre><code>rect_count: u32,
+spotlight_radius: f32,
+spotlight_softness: f32,
+aspect_ratio: f32,
+spotlight_center: Vec2,
+_padding: Vec2,</code></pre></section>
+    <section><h3>WESL</h3><pre><code>rect_count: u32,
+spotlight_radius: f32,
+spotlight_softness: f32,
+aspect_ratio: f32,
+spotlight_center: vec2&lt;f32&gt;,
+_padding: vec2&lt;f32&gt;,</code></pre></section>
+  </div>
+  <p>字段顺序完全对应。尾部按 <code>u32 + 3×f32 + vec2 + vec2</code> 组织，避免让两侧对 padding 作不同解释。</p>
+
+  <h2>2. Rust 每帧提供实际参数</h2>
+  <pre><code>screen_material.spotlight_center = Vec2::splat(0.5);
+screen_material.spotlight_radius = 0.3;
+screen_material.spotlight_softness = 0.05;
+
+screen_material.aspect_ratio = camera
+    .physical_viewport_size()
+    .filter(|size| size.y &gt; 0)
+    .map(|size| size.x as f32 / size.y as f32)
+    .unwrap_or(1.0);</code></pre>
+  <p>这仍是固定效果参数，但宽高比来自真实 viewport。先完成端到端路径，下一阶段再把中心、半径和软边抽成游戏组件。</p>
+
+  <h2>3. Fragment 中组合颜色</h2>
+  <pre><code>let mask = circular_mask(
+    in.uv,
+    material.spotlight_center,
+    material.spotlight_radius,
+    material.spotlight_softness,
+    material.aspect_ratio,
+);
+
+let dark = vec4&lt;f32&gt;(color.rgb * 0.25, color.a);
+color = mix(dark, color, mask);</code></pre>
+  <div class="pipeline">
+    <div>采样屏幕</div><div>已有矩形变换</div><div>生成圆形 mask</div><div>暗色与原色 mix</div><div>返回颜色</div>
+  </div>
+
+  <div class="note"><strong>插入位置：</strong>把聚光代码放在现有矩形循环之后、<code>return color</code> 之前。这样它接收前一步已经处理过的颜色，再施加聚光效果。</div>
+
+  <section class="quiz" data-answer="a">
+    <strong>为什么 aspect ratio 应来自 camera viewport？</strong>
+    <div class="answers">
+      <button data-choice="a">适应目标尺寸</button>
+      <button data-choice="b">加载纹理资源</button>
+      <button data-choice="c">改变模块路径</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong>圆内 mask 接近 1 时，示例 mix 选择什么？</strong>
+    <div class="answers">
+      <button data-choice="a">选择当前颜色</button>
+      <button data-choice="b">选择更暗颜色</button>
+      <button data-choice="c">选择透明颜色</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>实际编码：</strong>
+    <ol>
+      <li>在 Rust 与 WESL 的 <code>RegionColorScreenMaterial</code> 中按相同顺序替换尾部字段。</li>
+      <li>在 <code>sync_greyout_regions_to_screen_material</code> 的 camera 循环中写入中心、半径、软边和真实宽高比。</li>
+      <li>在 fragment 返回前调用 <code>circular_mask</code> 并用 <code>mix</code> 合成暗色与当前颜色。</li>
+      <li>完成后告诉我“已完成”；我会检查 uniform 实际偏移、Rust 构建、WESL 编译和最终数据流。</li>
+    </ol>
+  </div>
+
+  <footer>
+    主来源：<a href="../src/region_color_screen_material.rs">项目 Rust material</a> ·
+    <a href="../assets/shaders/region_color_screen_material.wesl">项目 WESL material</a> ·
+    <a href="0010-load-imported-shader-in-bevy.html">上一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a><br>
+    任何概念不清楚都可以直接问我，不需要等到完成练习。
+  </footer>
+</main>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：你正在追踪完整的 CPU → GPU → color 数据流。'
+          : '沿参数从 Rust 写入到 fragment 返回值重新检查。';
+      });
+    });
+  });
+</script>
+</body>
+</html>
