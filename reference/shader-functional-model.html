@@ -56,6 +56,46 @@
     </tbody>
   </table>
 
+  <h2>Attribute 与 Binding 合约</h2>
+  <table>
+    <thead><tr><th>写法</th><th>含义</th><th>当前全屏材质例子</th></tr></thead>
+    <tbody>
+      <tr><td><code>@fragment</code></td><td>标记 fragment stage 入口函数</td><td><code>fn fragment(...)</code></td></tr>
+      <tr><td><code>@location(0)</code></td><td>普通 stage 输入输出位置，或 color target 位置</td><td><code>uv</code> 与返回颜色</td></tr>
+      <tr><td><code>@builtin(position)</code></td><td>GPU/管线内置语义</td><td>全屏顶点输出裁剪空间位置</td></tr>
+      <tr><td><code>@group(0) @binding(n)</code></td><td>读取 bind group 0 的第 n 个资源槽</td><td>texture、sampler、material uniform</td></tr>
+    </tbody>
+  </table>
+  <div class="formula">shader declaration: @group(g) @binding(b)<br>Rust render code: set_bind_group(g, bind_group)<br>bind group entry order/type must match binding b</div>
+  <table>
+    <thead><tr><th>Binding</th><th>Shader 变量</th><th>Bevy FullscreenMaterial 来源</th></tr></thead>
+    <tbody>
+      <tr><td><code>0</code></td><td><code>screen_texture</code></td><td><code>ViewTarget</code> 的 post-process source texture</td></tr>
+      <tr><td><code>1</code></td><td><code>texture_sampler</code></td><td><code>RenderDevice::create_sampler</code></td></tr>
+      <tr><td><code>2</code></td><td><code>material</code></td><td><code>ComponentUniforms&lt;RegionColorScreenMaterial&gt;</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Texture / Sampler / textureSample</h2>
+  <div class="formula">textureSample(texture_data, read_policy, normalized_uv) → vec4&lt;f32&gt;</div>
+  <table>
+    <thead><tr><th>对象</th><th>职责</th><th>当前全屏材质</th></tr></thead>
+    <tbody>
+      <tr><td><code>texture_2d&lt;f32&gt;</code></td><td>二维颜色数据</td><td><code>screen_texture</code>，来自 post-process source texture</td></tr>
+      <tr><td><code>sampler</code></td><td>越界寻址与 texel 过滤策略</td><td>默认 <code>ClampToEdge</code> + <code>Nearest</code></td></tr>
+      <tr><td><code>uv</code></td><td>归一化采样地址</td><td>来自全屏 vertex shader 的 <code>@location(0)</code></td></tr>
+    </tbody>
+  </table>
+  <p>改颜色是后处理；改 UV 是改“从哪里取色”。<code>textureSample(screen_texture, texture_sampler, uv + offset)</code> 会把别处的屏幕颜色拉到当前片元。</p>
+
+  <h2>Mask 控制 UV 扭曲</h2>
+  <div class="formula">distortion = direction × amount × mask<br>sample_uv = uv + distortion<br>color = textureSample(texture, sampler, sample_uv)</div>
+  <p>mask 不只控制 <code>mix</code>，也可以控制采样地址的偏移强度。通常用 <code>uv</code> 算 mask，描述当前片元是否属于效果区域；用 <code>sample_uv</code> 采样 texture，描述当前片元要从哪里取颜色。</p>
+
+  <h2>径向波形 UV 扭曲</h2>
+  <div class="formula">direction = normalize(aspect_correct(uv − center))<br>amount = radial_wave(uv, center, aspect, frequency, speed, time)<br>distortion = uv_direction × amount × mask × strength</div>
+  <p>方向、强度、作用域要拆开：方向回答往哪里取色，波形回答哪一圈最强，mask 回答哪里允许发生。中心点要用 <code>max(distance, epsilon)</code> 一类写法避免除以 0。</p>
+
   <h2>当前全屏 Pass 的 UV</h2>
   <table>
     <thead><tr><th>位置</th><th>UV</th><th>常用判断</th></tr></thead>
@@ -103,11 +143,11 @@
     <thead><tr><th>机制</th><th>职责</th></tr></thead>
     <tbody>
       <tr><td><code>import super::module::symbol</code></td><td>描述 WESL 模块路径与要导入的符号</td></tr>
-      <tr><td><code>AssetServer.load</code></td><td>让 Bevy 0.19 的运行时 resolver 获得依赖 shader asset</td></tr>
-      <tr><td>强 <code>Handle&lt;Shader&gt;</code></td><td>保证被导入 shader 在使用期间不被释放</td></tr>
+      <tr><td><code>Shader.file_dependencies</code></td><td>当前 hxYuki Bevy fork 会自动加载并持有 WESL import 依赖</td></tr>
+      <tr><td><code>AssetServer.load</code> + 强 handle</td><td>旧 Bevy 0.19 行为下需要手动保证依赖 shader asset 存活</td></tr>
     </tbody>
   </table>
-  <div class="formula">ShaderRef(root) + AssetServer.load(dependency) + strong Handle + WESL import</div>
+  <div class="formula">current fork: ShaderRef(root) + WESL import → file_dependencies<br>older Bevy: ShaderRef(root) + AssetServer.load(dependency) + strong Handle + WESL import</div>
 
   <h2>聚光效果 Tracer Bullet</h2>
   <div class="formula">Rust parameters → mirrored uniform layout → circular_mask → mix(dark, color, mask)</div>
@@ -141,7 +181,39 @@
 
   <h2>时间 × 空间相位</h2>
   <div class="formula">d = length(aspect_correct(uv − center))<br>phase = d × frequency − time × speed<br>ring = sharpen(0.5 + 0.5 × sin(phase))</div>
-  <p>这是 GPU 动画的常见形状：时间是共享输入，距离或 UV 是每个 fragment 的局部输入。改变 <code>frequency</code> 会改变圆环密度；改变 <code>speed</code> 会改变运动速度。</p>
+  <p>这是 GPU 动画的常见形状：时间是共享输入，距离或 UV 是每个 fragment 的局部输入。改变 <code>frequency</code> 会改变圆环密度；改变 <code>speed</code> 会改变运动速度。稳定后可以抽为 <code>radial_wave(uv, center, aspect, frequency, speed, time) -&gt; f32</code>。</p>
+
+  <h2>效果层组合</h2>
+  <div class="formula">source_layer → target_layer<br>strength = shape_mask × gate_mask<br>output = mix(source_layer, target_layer, strength)</div>
+  <p>复杂效果不要只连续修改 <code>color</code>。先命名当前层、目标层和影响域；检查 <code>strength = 0</code> 与 <code>strength = 1</code> 时分别返回什么。</p>
+
+  <h2>反向 Mask 与优先级</h2>
+  <table>
+    <thead><tr><th>目标</th><th>Gate</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td>只影响亮区</td><td><code>mask</code></td><td>mask 高值区域允许效果进入</td></tr>
+      <tr><td>只影响暗区</td><td><code>1.0 - mask</code></td><td>保护原本的高值区域</td></tr>
+      <tr><td>只影响软边</td><td><code>mask × (1.0 - mask) × 4.0</code></td><td>中心和外侧都弱，过渡区最强</td></tr>
+    </tbody>
+  </table>
+  <p>效果优先级通常不是单独的语法，而是通过 gate 保护某些区域：谁的区域先被排除，谁就不会被后续效果覆盖。</p>
+
+  <h2>抽出 WESL Helper</h2>
+  <div class="formula">helper(input values) → output value<br>root shader: import super::module::helper<br>current fork: Bevy loader tracks file_dependencies</div>
+  <p>优先抽出只依赖显式参数的纯 helper。这样 fragment 负责业务数据流，helper 负责稳定公式；当前项目使用的 Bevy fork 会自动加载 import 依赖，移植回旧 Bevy 时再检查是否需要手动强 handle。</p>
+
+  <h2>参数归属</h2>
+  <table>
+    <thead><tr><th>归属</th><th>适合放什么</th><th>例子</th></tr></thead>
+    <tbody>
+      <tr><td>helper 内部</td><td>公式固定部分</td><td><code>sin(x) * 0.5 + 0.5</code></td></tr>
+      <tr><td>调用点</td><td>当前 shader 的固定风格值</td><td><code>radial_wave(..., 32.0, 6.0, time)</code></td></tr>
+      <tr><td>uniform</td><td>一次 draw 共享、运行时可变的渲染参数</td><td><code>elapsed_secs</code>、<code>ring_brightness</code></td></tr>
+      <tr><td>Rust 组件</td><td>游戏侧表达的效果意图</td><td><code>ScreenSpotlight.radius</code></td></tr>
+    </tbody>
+  </table>
+  <div class="formula">component intent → sync system → uniform value → helper argument</div>
+  <p>不要为了“通用”把所有数字都提升为 uniform。每提升一个字段，都增加 Rust/WESL 布局契约和同步路径；优先提升需要被游戏侧配置或动画驱动的值。</p>
 
   <div class="warning">
     <strong>类比边界：</strong>fragment 不是固定等于“一个屏幕像素”；光栅化、深度测试、MSAA 和 discard 都会改变实际调用或写入。不同 invocation 之间也没有可依赖的先后顺序。
@@ -149,6 +221,7 @@
 
   <footer>
     依据：<a href="https://www.w3.org/TR/WGSL/">W3C WGSL specification</a> ·
+    <a href="shader-learning-roadmap.html">Shader 学习路线图</a> ·
     <a href="../lessons/0001-fragment-shader-as-map.html">第一课</a> ·
     <a href="../lessons/0002-bindings-as-function-environment.html">第二课</a> ·
     <a href="../lessons/0003-uv-is-effect-space.html">第三课</a> ·
@@ -163,7 +236,15 @@
     <a href="../lessons/0012-drive-shader-from-component.html">第十二课</a> ·
     <a href="../lessons/0013-animate-shader-parameter-with-time.html">第十三课</a> ·
     <a href="../lessons/0014-move-time-into-shader-uniform.html">第十四课</a> ·
-    <a href="../lessons/0015-time-distance-ripple.html">第十五课</a>
+    <a href="../lessons/0015-time-distance-ripple.html">第十五课</a> ·
+    <a href="../lessons/0016-effect-layer-order.html">第十六课</a> ·
+    <a href="../lessons/0017-reverse-mask-priority.html">第十七课</a> ·
+    <a href="../lessons/0018-extract-effect-layer-helper.html">第十八课</a> ·
+    <a href="../lessons/0019-helper-parameter-ownership.html">第十九课</a> ·
+    <a href="../lessons/0020-read-attributes-and-bindings.html">第二十课</a> ·
+    <a href="../lessons/0021-texture-sampler-sample.html">第二十一课</a> ·
+    <a href="../lessons/0022-mask-gated-uv-distortion.html">第二十二课</a> ·
+    <a href="../lessons/0023-radial-wave-uv-distortion.html">第二十三课</a>
   </footer>
 </main>
 </body>

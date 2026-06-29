@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bevy Schedule 速查</title>
+  <style>
+    :root { color-scheme: light dark; --ink:#17202a; --muted:#607080; --paper:#fbfaf7; --line:#d8d5cc; --accent:#0f766e; --code:#eef3f2; --warn:#fff7ed; }
+    @media (prefers-color-scheme: dark) { :root { --ink:#edf2f4; --muted:#a8b3bd; --paper:#15191d; --line:#374047; --accent:#5eead4; --code:#20282d; --warn:#251d14; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.6 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:1080px; margin:0 auto; padding:54px 30px 80px; }
+    h1 { margin:0 0 8px; font:700 clamp(2rem,5vw,3.4rem)/1.05 Georgia,"Noto Serif SC",serif; letter-spacing:-.03em; }
+    h2 { margin:44px 0 12px; font-size:1.25rem; }
+    h3 { margin:30px 0 10px; font-size:1.05rem; }
+    .lead { color:var(--muted); max-width:78ch; }
+    .formula { margin:22px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--code); font:600 1rem/1.85 ui-monospace,SFMono-Regular,monospace; overflow:auto; }
+    table { width:100%; border-collapse:collapse; margin:16px 0 28px; }
+    th,td { padding:12px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.8rem; text-transform:uppercase; letter-spacing:.08em; }
+    code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+    pre { padding:18px; overflow:auto; border-radius:9px; background:#102027; color:#e9f7fc; font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    .note { margin:24px 0; padding:18px 22px; border:1px solid var(--line); border-radius:8px; background:var(--warn); }
+    a { color:var(--accent); }
+    footer { margin-top:48px; color:var(--muted); font-size:.9rem; }
+    @media print { main { max-width:none; padding:24px; } a { color:inherit; text-decoration:none; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Bevy Schedule 速查</h1>
+  <p class="lead">基于本项目当前使用的 Bevy 0.19 git 源码整理。重点是 render schedule；同时列出主 App schedule 和 state/remote 等内置 schedule，方便区分“游戏逻辑顺序”和“渲染顺序”。</p>
+
+  <div class="note">
+    <strong>术语边界：</strong><code>Schedule</code> 是系统运行的容器；<code>SystemSet</code> 是 schedule 内的排序分组。大多数 render 排序问题不是新增 schedule，而是在正确 schedule 里用 <code>.in_set()</code>、<code>.after()</code>、<code>.before()</code> 放对位置。
+  </div>
+
+  <h2>1. Main App schedules</h2>
+  <p>这些运行在主世界，处理 gameplay、输入、状态、UI 数据等。渲染默认不在这里执行。</p>
+
+  <h3>Startup 阶段：第一次 Main 执行时运行一次</h3>
+  <div class="formula">StateTransition? → PreStartup → Startup → PostStartup</div>
+
+  <table>
+    <thead><tr><th>Schedule</th><th>简介</th></tr></thead>
+    <tbody>
+      <tr><td><code>Main</code></td><td>主调度器 schedule；每次 <code>App::update()</code> 运行时按顺序调用子 schedules。</td></tr>
+      <tr><td><code>PreStartup</code></td><td>启动前准备，运行在 <code>Startup</code> 之前。</td></tr>
+      <tr><td><code>Startup</code></td><td>常规启动逻辑，只运行一次。</td></tr>
+      <tr><td><code>PostStartup</code></td><td>启动后收尾，只运行一次。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>每帧阶段：Main 每次更新都会按序运行</h3>
+  <div class="formula">First → PreUpdate → StateTransition? → RunFixedMainLoop → Update → SpawnScene → PostUpdate → Last</div>
+
+  <table>
+    <thead><tr><th>Schedule</th><th>简介</th></tr></thead>
+    <tbody>
+      <tr><td><code>First</code></td><td>每帧最早运行。</td></tr>
+      <tr><td><code>PreUpdate</code></td><td>插件/引擎准备输入和消息等，让 <code>Update</code> 读取到整理后的数据。</td></tr>
+      <tr><td><code>RunFixedMainLoop</code></td><td>按累计时间运行 <code>FixedMain</code> 零到多次。</td></tr>
+      <tr><td><code>Update</code></td><td>常规每帧游戏逻辑、输入响应、UI 控制、音频控制。</td></tr>
+      <tr><td><code>SpawnScene</code></td><td>场景实例生成，位于 <code>Update</code> 和 <code>PostUpdate</code> 之间。</td></tr>
+      <tr><td><code>PostUpdate</code></td><td>对 <code>Update</code> 结果做引擎响应，例如 transform 同步。</td></tr>
+      <tr><td><code>Last</code></td><td>每帧最后运行。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>固定步长阶段</h3>
+  <div class="formula">FixedMain = FixedFirst → FixedPreUpdate → FixedUpdate → FixedPostUpdate → FixedLast</div>
+
+  <table>
+    <thead><tr><th>Schedule</th><th>简介</th></tr></thead>
+    <tbody>
+      <tr><td><code>FixedMain</code></td><td>固定 timestep 的主调度器。</td></tr>
+      <tr><td><code>FixedFirst</code></td><td>固定步长最早阶段。</td></tr>
+      <tr><td><code>FixedPreUpdate</code></td><td>固定逻辑前准备。</td></tr>
+      <tr><td><code>FixedUpdate</code></td><td>固定频率游戏逻辑，适合物理、AI、规则、网络同步。</td></tr>
+      <tr><td><code>FixedPostUpdate</code></td><td>固定逻辑后响应。</td></tr>
+      <tr><td><code>FixedLast</code></td><td>固定步长最后阶段。</td></tr>
+    </tbody>
+  </table>
+
+  <h2>2. State schedules</h2>
+  <p>启用 <code>bevy_state</code> 时存在，用于状态切换。</p>
+  <table>
+    <thead><tr><th>Schedule</th><th>简介</th></tr></thead>
+    <tbody>
+      <tr><td><code>StateTransition</code></td><td>处理 <code>NextState</code>，默认在 startup 前和每帧 <code>PreUpdate</code> 后运行。</td></tr>
+      <tr><td><code>OnExit(S)</code></td><td>离开某个状态时运行。</td></tr>
+      <tr><td><code>OnTransition { exited, entered }</code></td><td>从指定状态切到指定状态时运行，位于 exit 和 enter 之间。</td></tr>
+      <tr><td><code>OnEnter(S)</code></td><td>进入某个状态时运行。</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. Render schedules：真正渲染相关</h2>
+  <p>渲染发生在 <code>RenderApp</code> 子应用中。主世界先跑游戏逻辑，再把数据 extract 到 render world，然后 render world 准备 GPU 资源并执行渲染。</p>
+
+  <table>
+    <thead><tr><th>Schedule</th><th>层级</th><th>简介</th></tr></thead>
+    <tbody>
+      <tr><td><code>ExtractSchedule</code></td><td>main → render</td><td>把主世界数据提取到 render world；应尽量短。</td></tr>
+      <tr><td><code>RenderStartup</code></td><td>RenderApp</td><td>初始化 GPU 资源；设备恢复时可能再次运行。</td></tr>
+      <tr><td><code>Render</code></td><td>RenderApp</td><td>主 render schedule，包含准备资源、排队、排序、执行 render backend、cleanup。</td></tr>
+      <tr><td><code>RenderGraph</code></td><td>root render graph</td><td>每帧由 <code>render_system</code> 驱动，负责执行 camera-driven schedules 并提交 command buffers。</td></tr>
+      <tr><td><code>Core2d</code></td><td>camera pipeline</td><td>2D 相机渲染 schedule。当前项目 fullscreen effect 插在这里。</td></tr>
+      <tr><td><code>Core3d</code></td><td>camera pipeline</td><td>3D 相机渲染 schedule。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>RenderSystems：Render schedule 内的主要 sets</h3>
+  <div class="formula">ExtractCommands → PrepareMeshes → CreateViews → Specialize → PrepareViews → Queue → PhaseSort → Prepare → Render → Cleanup → PostCleanup</div>
+  <table>
+    <thead><tr><th>SystemSet</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>ExtractCommands</code></td><td>应用 <code>ExtractSchedule</code> 产生的 commands。</td></tr>
+      <tr><td><code>PrepareAssets</code></td><td>处理本帧新增、修改、移除的 GPU assets。</td></tr>
+      <tr><td><code>PrepareMeshes</code></td><td>准备提取出的 meshes。</td></tr>
+      <tr><td><code>CreateViews</code></td><td>创建 shadow map 等额外 views。</td></tr>
+      <tr><td><code>Specialize</code></td><td>按 view/material 等条件特化 pipeline。</td></tr>
+      <tr><td><code>PrepareViews</code></td><td>准备相机和额外 view 相关资源。</td></tr>
+      <tr><td><code>Queue</code></td><td>把可绘制实体排入 render phases。</td></tr>
+      <tr><td><code>QueueMeshes</code></td><td><code>Queue</code> 内的 mesh 排队子集。</td></tr>
+      <tr><td><code>QueueSweep</code></td><td><code>Queue</code> 内清理不可见或 phase 变化的项目。</td></tr>
+      <tr><td><code>PhaseSort</code></td><td>排序 sorted phases / binned phases。</td></tr>
+      <tr><td><code>Prepare</code></td><td>按排序结果准备 GPU 资源和 bind groups。</td></tr>
+      <tr><td><code>PrepareResources</code></td><td><code>Prepare</code> 内初始化 buffers、textures、uniforms。</td></tr>
+      <tr><td><code>PrepareResourcesBatchPhases</code></td><td>为 render phases 创建 batches。</td></tr>
+      <tr><td><code>PrepareResourcesWritePhaseBuffers</code></td><td>把 phase batches 写入 GPU。</td></tr>
+      <tr><td><code>PrepareResourcesCollectPhaseBuffers</code></td><td>收集 phase buffers。</td></tr>
+      <tr><td><code>PrepareResourcesFlush</code></td><td>flush buffers，位于资源准备和 bind group 准备之间。</td></tr>
+      <tr><td><code>PrepareBindGroups</code></td><td>创建依赖 GPU 资源的 bind groups。</td></tr>
+      <tr><td><code>Render</code></td><td>实际调用 render backend。</td></tr>
+      <tr><td><code>Cleanup</code></td><td>清理 render 资源。</td></tr>
+      <tr><td><code>PostCleanup</code></td><td>最终清理临时 render entities。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>RenderGraphSystems：RenderGraph schedule 内的 sets</h3>
+  <div class="formula">Begin → Render → Submit → Finish</div>
+  <table>
+    <thead><tr><th>SystemSet</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>Begin</code></td><td>每帧渲染前准备。</td></tr>
+      <tr><td><code>Render</code></td><td>主渲染阶段；CorePipeline 的 camera driver 在这里执行 camera schedules。</td></tr>
+      <tr><td><code>Submit</code></td><td>提交渲染阶段生成的 command buffers。</td></tr>
+      <tr><td><code>Finish</code></td><td>提交后收尾。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Core2d/Core3d camera schedule sets</h3>
+  <div class="formula">Prepass → MainPass → EarlyPostProcess → PostProcess</div>
+  <table>
+    <thead><tr><th>SystemSet</th><th>2D/3D 含义</th></tr></thead>
+    <tbody>
+      <tr><td><code>Prepass</code></td><td>预处理 pass，例如 3D depth prepass。</td></tr>
+      <tr><td><code>MainPass</code></td><td>主绘制 pass：2D sprites/meshes 或 3D opaque/transparent。</td></tr>
+      <tr><td><code>EarlyPostProcess</code></td><td>早期后处理。</td></tr>
+      <tr><td><code>PostProcess</code></td><td>常规后处理。</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4. 常用内置 pass / system 名称</h2>
+  <p>下面这些不是新的 schedule，而是已经被 Bevy 插到 <code>Core2d</code> / <code>Core3d</code> 里的 system。自定义 fullscreen pass 时，通常用它们做 <code>.before(...)</code> / <code>.after(...)</code> 锚点。</p>
+  <p>注意：部分 pass 来自可选插件或 feature，例如 <code>bevy_post_process</code>、<code>bevy_anti_alias</code>、<code>bevy_pbr</code>。表中列的是本地 Bevy 0.19 源码中的常见内置锚点，不表示当前项目一定启用了每一个效果。</p>
+
+  <h3>2D 常用 pass</h3>
+  <table>
+    <thead><tr><th>System</th><th>所在位置</th><th>用途</th><th>排序用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>main_opaque_pass_2d</code></td><td><code>Core2dSystems::MainPass</code></td><td>绘制 2D opaque phase。</td><td>很少直接锚定；通常只需知道它早于 post-process。</td></tr>
+      <tr><td><code>main_transparent_pass_2d</code></td><td><code>Core2dSystems::MainPass</code></td><td>绘制 2D transparent phase，sprites/UI 之外的 2D 透明绘制主要在这里。</td><td>需要在 2D 主画面完成后处理时，排到 <code>MainPass</code> 之后。</td></tr>
+      <tr><td><code>bloom</code></td><td><code>Core2dSystems::PostProcess</code></td><td>泛光；Bevy 将其放在 <code>tonemapping</code> 之前。</td><td>HDR 空间效果通常放在 <code>tonemapping</code> 前。</td></tr>
+      <tr><td><code>post_processing</code></td><td><code>Core2d</code></td><td>Bevy post-process effect stack。</td><td>源码中排在 <code>bloom</code> 后、<code>tonemapping</code> 前。</td></tr>
+      <tr><td><code>tonemapping</code></td><td><code>Core2dSystems::PostProcess</code></td><td>把 HDR/线性颜色映射到显示用颜色范围。</td><td>决定效果是在 tonemap 前还是 tonemap 后运行。</td></tr>
+      <tr><td><code>fxaa</code></td><td><code>Core2dSystems::PostProcess</code></td><td>Fast Approximate Anti-Aliasing。</td><td>源码中排在 <code>tonemapping</code> 后。</td></tr>
+      <tr><td><code>smaa</code></td><td><code>Core2dSystems::PostProcess</code></td><td>Subpixel Morphological Anti-Aliasing。</td><td>源码中排在 <code>tonemapping</code> 后。</td></tr>
+      <tr><td><code>cas</code></td><td><code>Core2dSystems::PostProcess</code></td><td>Contrast Adaptive Sharpening。</td><td>源码中排在 <code>fxaa</code> / <code>smaa</code> 后。</td></tr>
+      <tr><td><code>ui_pass</code></td><td><code>Core2d</code></td><td>把 UI phase 绘制到当前 ViewTarget。</td><td>后处理要影响 UI，就排在它之后。</td></tr>
+      <tr><td><code>upscaling</code></td><td><code>Core2d</code></td><td>把 ViewTarget main texture blit 到最终输出 attachment。</td><td>后处理要显示到窗口，就排在它之前。</td></tr>
+      <tr><td><code>msaa_writeback</code></td><td><code>Core2d</code></td><td>MSAA writeback。</td><td>源码中排在 <code>MainPass</code> 前；普通 fullscreen effect 通常不锚定它。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>3D 常用 pass</h3>
+  <table>
+    <thead><tr><th>System</th><th>所在位置</th><th>用途</th><th>排序用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>early_prepass</code> / <code>late_prepass</code></td><td><code>Core3dSystems::Prepass</code></td><td>3D depth/normal/motion vector 等预处理 pass。</td><td>TAA、SSAO、deferred 等依赖 prepass 数据时相关。</td></tr>
+      <tr><td><code>early_deferred_prepass</code> / <code>late_deferred_prepass</code></td><td><code>Core3dSystems::Prepass</code></td><td>deferred 渲染所需的 G-buffer 类预处理。</td><td>研究 deferred pipeline 时相关。</td></tr>
+      <tr><td><code>deferred_lighting</code></td><td><code>Core3dSystems::MainPass</code></td><td>deferred lighting pass。</td><td>源码中排在 <code>main_opaque_pass_3d</code> 前。</td></tr>
+      <tr><td><code>screen_space_reflections</code></td><td><code>Core3dSystems::MainPass</code></td><td>SSR 屏幕空间反射。</td><td>源码中排在 <code>deferred_lighting</code> 后、<code>main_opaque_pass_3d</code> 前。</td></tr>
+      <tr><td><code>main_opaque_pass_3d</code></td><td><code>Core3dSystems::MainPass</code></td><td>绘制 3D opaque phase。</td><td>自定义 3D main pass 或 deferred/SSR 排序时常见锚点。</td></tr>
+      <tr><td><code>main_transmissive_pass_3d</code></td><td><code>Core3dSystems::MainPass</code></td><td>绘制 transmissive 材质。</td><td>源码中排在 opaque 后、transparent 前。</td></tr>
+      <tr><td><code>main_transparent_pass_3d</code></td><td><code>Core3dSystems::MainPass</code></td><td>绘制 3D transparent phase。</td><td>需要在所有透明物体后做处理时相关。</td></tr>
+      <tr><td><code>oit_resolve</code></td><td><code>Core3dSystems::MainPass</code></td><td>Order Independent Transparency resolve。</td><td>源码中排在 <code>main_transparent_pass_3d</code> 后。</td></tr>
+      <tr><td><code>temporal_anti_alias</code></td><td><code>Core3dSystems::EarlyPostProcess</code></td><td>TAA；需要 motion vector/depth 等历史信息。</td><td>源码中位于 early post-process，不是普通 tonemapping 后效果。</td></tr>
+      <tr><td><code>motion_blur</code></td><td><code>Core3dSystems::PostProcess</code></td><td>运动模糊。</td><td>源码中排在 <code>bloom</code> 前。</td></tr>
+      <tr><td><code>bloom</code></td><td><code>Core3dSystems::PostProcess</code></td><td>泛光。</td><td>源码中排在 <code>tonemapping</code> 前。</td></tr>
+      <tr><td><code>depth_of_field</code></td><td><code>Core3d</code></td><td>景深。</td><td>源码中排在 <code>bloom</code> 后、<code>tonemapping</code> 前。</td></tr>
+      <tr><td><code>auto_exposure</code></td><td><code>Core3dSystems::PostProcess</code></td><td>自动曝光。</td><td>源码中排在 <code>tonemapping</code> 前。</td></tr>
+      <tr><td><code>post_processing</code></td><td><code>Core3d</code></td><td>Bevy post-process effect stack。</td><td>源码中排在 <code>depth_of_field</code> 后、<code>tonemapping</code> 前。</td></tr>
+      <tr><td><code>tonemapping</code></td><td><code>Core3dSystems::PostProcess</code></td><td>色调映射。</td><td>区分 HDR 空间效果和 LDR/display 空间效果的关键锚点。</td></tr>
+      <tr><td><code>fxaa</code> / <code>smaa</code></td><td><code>Core3dSystems::PostProcess</code></td><td>抗锯齿。</td><td>源码中排在 <code>tonemapping</code> 后。</td></tr>
+      <tr><td><code>cas</code></td><td><code>Core3dSystems::PostProcess</code></td><td>锐化。</td><td>源码中排在 <code>fxaa</code> / <code>smaa</code> 后。</td></tr>
+      <tr><td><code>ui_pass</code></td><td><code>Core3d</code></td><td>在 3D 相机目标上绘制 UI。</td><td>后处理要影响 UI，就排在它之后。</td></tr>
+      <tr><td><code>upscaling</code></td><td><code>Core3d</code></td><td>最终 blit 到输出。</td><td>后处理要显示到窗口，就排在它之前。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>常见排序模板</h3>
+  <table>
+    <thead><tr><th>目标</th><th>推荐排序</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>影响 2D 场景，不影响 UI</td><td><code>.in_set(Core2dSystems::PostProcess).before(ui_pass)</code></td><td>UI 后画上去，不会被处理。</td></tr>
+      <tr><td>影响 2D 场景 + UI</td><td><code>.after(ui_pass).before(upscaling)</code></td><td>当前项目正在使用的模式。</td></tr>
+      <tr><td>HDR 后处理</td><td><code>.before(tonemapping)</code></td><td>适合 bloom、曝光、部分颜色空间相关效果。</td></tr>
+      <tr><td>LDR/display 后处理</td><td><code>.after(tonemapping)</code></td><td>适合 FXAA/SMAA、屏幕空间像素风格效果。</td></tr>
+      <tr><td>最终窗口前处理</td><td><code>.before(upscaling)</code></td><td>不要放到 <code>upscaling</code> 后面。</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. fullscreen post-process 位置</h2>
+  <p>这部分是 post-process 专题的速查。后续 shader 主线会优先使用普通 <code>Material2d</code> / <code>Material3d</code>；只有需要处理整张屏幕输出时才回到这里。</p>
+  <p>Bevy 0.19 中，UI pass 被加入 <code>Core2d</code> / <code>Core3d</code>，排序是：</p>
+  <pre><code>ui_pass
+    .after(Core2dSystems::PostProcess)
+    .before(upscaling)</code></pre>
+
+  <p>因此当前项目如果要让 shader 同时影响场景和 UI，并且显示到窗口，应使用：</p>
+  <pre><code>system
+    .after(ui_render::ui_pass)
+    .before(core_pipeline::upscaling::upscaling)</code></pre>
+
+  <table>
+    <thead><tr><th>位置</th><th>实验现象</th><th>原因</th></tr></thead>
+    <tbody>
+      <tr><td><code>before(ui_pass)</code></td><td>UI 不受影响；聚光外黑色/闪背景。</td><td>UI 尚未写入 source texture，之后 UI 又被画上去。</td></tr>
+      <tr><td><code>after(ui_pass).before(upscaling)</code></td><td>效果作用于 UI + 场景并显示。</td><td>读取最终 UI-inclusive main texture，写回 ViewTarget，再由 upscaling 输出。</td></tr>
+      <tr><td><code>after(upscaling)</code></td><td>效果不显示。</td><td>窗口输出已经完成，后续写 ViewTarget 内部 texture 错过 present 路径。</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6. 其他内置 schedule</h2>
+  <table>
+    <thead><tr><th>Schedule</th><th>来源</th><th>简介</th></tr></thead>
+    <tbody>
+      <tr><td><code>RemoteLast</code></td><td><code>bevy_remote</code></td><td>处理 Bevy Remote Protocol 请求的 schedule；仅在相关插件启用时使用。</td></tr>
+      <tr><td><code>RenderRecovery</code></td><td><code>bevy_render</code></td><td>内部 schedule，用于设备恢复时运行 render schedule order；源码中为私有类型，通常不直接使用。</td></tr>
+      <tr><td><code>DefaultSchedule</code></td><td><code>bevy_ecs</code></td><td><code>Schedule::default()</code> 的内部默认 label；业务代码不应依赖。</td></tr>
+    </tbody>
+  </table>
+
+  <h2>7. 判断 checklist</h2>
+  <table>
+    <thead><tr><th>问题</th><th>看哪里</th></tr></thead>
+    <tbody>
+      <tr><td>系统修改 gameplay 数据？</td><td>主 App schedule：通常 <code>Update</code> 或 <code>PostUpdate</code>。</td></tr>
+      <tr><td>系统把主世界数据传给渲染？</td><td><code>ExtractSchedule</code>。</td></tr>
+      <tr><td>系统准备 GPU pipeline / bind group？</td><td><code>Render</code> schedule 的 <code>Prepare</code> / <code>PrepareBindGroups</code>。</td></tr>
+      <tr><td>系统是一道屏幕后处理？</td><td><code>Core2d</code> / <code>Core3d</code> camera schedule。</td></tr>
+      <tr><td>后处理要影响 UI？</td><td>排在 <code>ui_pass</code> 之后。</td></tr>
+      <tr><td>后处理要显示到窗口？</td><td>排在 <code>upscaling</code> 之前。</td></tr>
+    </tbody>
+  </table>
+
+  <footer>
+    依据：本地 Bevy 0.19 git 源码 <code>bevy_app/src/main_schedule.rs</code>、<code>bevy_state/src/state/transitions.rs</code>、<code>bevy_render/src/lib.rs</code>、<code>bevy_render/src/extract_plugin.rs</code>、<code>bevy_render/src/renderer/mod.rs</code>、<code>bevy_core_pipeline/src/schedule.rs</code>、<code>bevy_core_pipeline/src/core_2d/mod.rs</code>、<code>bevy_core_pipeline/src/core_3d/mod.rs</code>、<code>bevy_ui_render/src/lib.rs</code>、<code>bevy_post_process</code>、<code>bevy_anti_alias</code>、<code>bevy_pbr</code>。配套课程：<a href="../lessons/0026-render-schedule-pass-order.html">第二十六课</a>。
+  </footer>
+</main>
+</body>
+</html>

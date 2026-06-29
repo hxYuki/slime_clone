@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TextureLoad 与 Blur 速查</title>
+  <style>
+    :root { color-scheme: light dark; --ink:#17202a; --muted:#607080; --paper:#fbfaf7; --line:#d8d5cc; --accent:#c2410c; --code:#eef3f2; }
+    @media (prefers-color-scheme: dark) { :root { --ink:#edf2f4; --muted:#a8b3bd; --paper:#15191d; --line:#374047; --accent:#fdba74; --code:#20282d; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.6 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:940px; margin:0 auto; padding:54px 30px 80px; }
+    h1 { margin:0 0 8px; font:700 clamp(2rem,5vw,3.4rem)/1.05 Georgia,"Noto Serif SC",serif; letter-spacing:-.03em; }
+    h2 { margin:44px 0 12px; font-size:1.2rem; }
+    .lead { color:var(--muted); max-width:68ch; }
+    .formula { margin:26px 0; padding:20px 24px; border-left:4px solid var(--accent); background:var(--code); font:600 1.05rem/1.8 ui-monospace,SFMono-Regular,monospace; overflow:auto; }
+    table { width:100%; border-collapse:collapse; margin:18px 0 28px; }
+    th,td { padding:13px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.82rem; text-transform:uppercase; letter-spacing:.08em; }
+    code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+    pre { padding:18px; overflow:auto; border-radius:9px; background:#102027; color:#e9f7fc; font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    .warning { margin-top:28px; padding:18px 22px; border:1px solid var(--line); border-radius:8px; }
+    a { color:var(--accent); }
+    footer { margin-top:48px; color:var(--muted); font-size:.9rem; }
+    @media print { main { max-width:none; padding:24px; } a { color:inherit; text-decoration:none; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>TextureLoad 与 Blur 速查</h1>
+  <p class="lead">像素邻域效果的核心是：把当前 fragment 映射到整数像素坐标，然后读取周围 texel。</p>
+
+  <h2>textureSample vs textureLoad</h2>
+  <table>
+    <thead><tr><th>函数</th><th>坐标</th><th>Sampler</th><th>主要用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>textureSample(texture, sampler, uv)</code></td><td><code>vec2&lt;f32&gt;</code>，归一化 UV</td><td>使用过滤和寻址规则</td><td>贴图、后处理取色、UV 扭曲</td></tr>
+      <tr><td><code>textureLoad(texture, pixel, mip)</code></td><td><code>vec2&lt;i32&gt;</code> / <code>vec2&lt;u32&gt;</code>，整数像素</td><td>不使用</td><td>精确 texel、blur、卷积、描边、边缘检测</td></tr>
+    </tbody>
+  </table>
+
+  <h2>安全像素坐标</h2>
+  <pre><code>let size = vec2&lt;i32&gt;(textureDimensions(source));
+let pixel = clamp(vec2&lt;i32&gt;(in.position.xy), vec2&lt;i32&gt;(0), size - vec2&lt;i32&gt;(1));</code></pre>
+  <p><code>in.position.xy</code> 是 fragment 的物理 framebuffer 坐标。用 <code>textureDimensions</code> 得到当前 texture 的真实尺寸，再 clamp 防止越界。</p>
+
+  <h2>3 点 blur helper 模式</h2>
+  <pre><code>fn horizontal_blur3(source: texture_2d&lt;f32&gt;, pixel_pos: vec2&lt;i32&gt;, offset: i32) -&gt; vec4&lt;f32&gt; {
+    let size = vec2&lt;i32&gt;(textureDimensions(source));
+    let center_pixel = clamp(pixel_pos, vec2&lt;i32&gt;(0), size - vec2&lt;i32&gt;(1));
+
+    let left_pixel = clamp(center_pixel + vec2&lt;i32&gt;(-offset, 0), vec2&lt;i32&gt;(0), size - vec2&lt;i32&gt;(1));
+    let right_pixel = clamp(center_pixel + vec2&lt;i32&gt;(offset, 0), vec2&lt;i32&gt;(0), size - vec2&lt;i32&gt;(1));
+
+    return (
+        textureLoad(source, left_pixel, 0) +
+        textureLoad(source, center_pixel, 0) +
+        textureLoad(source, right_pixel, 0)
+    ) / 3.0;
+}</code></pre>
+  <p>纵向版本只需要把偏移从 <code>(±offset, 0)</code> 换成 <code>(0, ±offset)</code>。</p>
+
+  <h2>Mask 限制作用域</h2>
+  <div class="formula">final = mix(original_color, effect_color, mask)</div>
+  <pre><code>let center_color = textureLoad(source_texture, position, 0);
+let blur_color = horizontal_blur3(source_texture, position, 8);
+var rect_color = mix(center_color, blur_color, spotlight_mask);</code></pre>
+  <p>不要把 mask 塞进 blur helper。helper 负责“如何模糊”；fragment 负责“在哪里应用”。</p>
+
+  <h2>十字 blur</h2>
+  <pre><code>let h = horizontal_blur3(source_texture, position, offset);
+let v = vertical_blur3(source_texture, position, offset);
+let blur_color = (h + v) * 0.5;</code></pre>
+  <table>
+    <thead><tr><th>读取方向</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>左 / 中 / 右</td><td>横向 helper 从原图读取</td></tr>
+      <tr><td>上 / 中 / 下</td><td>纵向 helper 也从原图读取</td></tr>
+      <tr><td>最终平均</td><td>得到十字形扩散，不是二次模糊</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Two-pass blur</h2>
+  <div class="formula">pass 1: source → horizontal blurred intermediate<br>pass 2: intermediate → vertical blurred final</div>
+  <p>真正 two-pass 的关键不是“代码里有 horizontal 和 vertical 两个函数”，而是第二个 pass 的输入必须是第一个 pass 的输出。</p>
+
+  <table>
+    <thead><tr><th>方案</th><th>读取源</th><th>需要额外 render 结构</th></tr></thead>
+    <tbody>
+      <tr><td>单 pass 十字 blur</td><td>原始 source texture</td><td>不需要</td></tr>
+      <tr><td>two-pass separable blur</td><td>第二 pass 读取中间 texture</td><td>需要中间 texture 或 ViewTarget ping-pong，以及 pass ordering</td></tr>
+    </tbody>
+  </table>
+
+  <div class="warning">
+    <strong>当前项目状态：</strong>保留 single-pass cross blur 作为教学效果。进入真正 two-pass 前，先学习 Bevy renderer schedule、FullscreenMaterial pass ordering 和 ViewTarget ping-pong。
+  </div>
+
+  <footer>
+    依据：<a href="https://www.w3.org/TR/WGSL/#texture-builtin-functions">W3C WGSL texture builtins</a> ·
+    <a href="../lessons/0025-texture-load-cross-blur.html">第二十五课</a> ·
+    <a href="shader-interface-contracts.html">Shader 接口契约速查</a>
+  </footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shader 接口契约速查</title>
+  <style>
+    :root { color-scheme: light dark; --ink:#17202a; --muted:#607080; --paper:#fbfaf7; --line:#d8d5cc; --accent:#0f766e; --code:#eef3f2; }
+    @media (prefers-color-scheme: dark) { :root { --ink:#edf2f4; --muted:#a8b3bd; --paper:#15191d; --line:#374047; --accent:#5eead4; --code:#20282d; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.6 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:940px; margin:0 auto; padding:54px 30px 80px; }
+    h1 { margin:0 0 8px; font:700 clamp(2rem,5vw,3.4rem)/1.05 Georgia,"Noto Serif SC",serif; letter-spacing:-.03em; }
+    h2 { margin:44px 0 12px; font-size:1.2rem; }
+    .lead { color:var(--muted); max-width:68ch; }
+    .formula { margin:26px 0; padding:20px 24px; border-left:4px solid var(--accent); background:var(--code); font:600 1.05rem/1.8 ui-monospace,SFMono-Regular,monospace; overflow:auto; }
+    table { width:100%; border-collapse:collapse; margin:18px 0 28px; }
+    th,td { padding:13px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.82rem; text-transform:uppercase; letter-spacing:.08em; }
+    code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+    .warning { margin-top:28px; padding:18px 22px; border:1px solid var(--line); border-radius:8px; }
+    a { color:var(--accent); }
+    footer { margin-top:48px; color:var(--muted); font-size:.9rem; }
+    @media print { main { max-width:none; padding:24px; } a { color:inherit; text-decoration:none; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Shader 接口契约速查</h1>
+  <p class="lead">阅读 WGSL/WESL 时，把 <code>@</code> 标记看成接口契约，而不是装饰语法。先问：这个标记在约束哪条边界？</p>
+
+  <div class="formula">
+    @group/@binding: renderer resources → shader<br>
+    @location: shader stage → shader stage / color target<br>
+    @builtin: GPU pipeline built-in semantics
+  </div>
+
+  <h2>三类接口</h2>
+  <table>
+    <thead><tr><th>标记</th><th>约束边界</th><th>当前项目例子</th><th>验证方式</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>@group(0) @binding(n)</code></td>
+        <td>Bevy/wgpu bind group layout 与 shader 全局资源</td>
+        <td><code>source_texture</code>、<code>texture_sampler</code>、<code>material</code></td>
+        <td>改变量名不影响；改不存在的 binding 会报 pipeline layout 错误</td>
+      </tr>
+      <tr>
+        <td><code>@location(n)</code></td>
+        <td>stage 间自定义输入输出，或 fragment 到 color target</td>
+        <td><code>uv</code> 从 vertex 传给 fragment；fragment 返回颜色到 <code>@location(0)</code></td>
+        <td>输入 location 缺失会报前一阶段未提供；输出 location 错槽可能黑屏</td>
+      </tr>
+      <tr>
+        <td><code>@builtin(name)</code></td>
+        <td>GPU 图形管线固定语义</td>
+        <td><code>@builtin(position)</code></td>
+        <td>fragment 中读取 <code>in.position.x</code> 可按物理 framebuffer 坐标分色</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>当前 FullscreenMaterial 资源槽位</h2>
+  <table>
+    <thead><tr><th>Binding</th><th>WGSL 类型</th><th>Bevy 来源</th><th>职责</th></tr></thead>
+    <tbody>
+      <tr><td><code>0</code></td><td><code>texture_2d&lt;f32&gt;</code></td><td>post-process source texture</td><td>读取已经渲染好的屏幕颜色</td></tr>
+      <tr><td><code>1</code></td><td><code>sampler</code></td><td><code>SamplerDescriptor::default()</code></td><td>规定采样过滤与越界寻址</td></tr>
+      <tr><td><code>2</code></td><td><code>var&lt;uniform&gt; RegionColorScreenMaterial</code></td><td><code>ComponentUniforms&lt;RegionColorScreenMaterial&gt;</code></td><td>读取 Rust 同步来的效果参数</td></tr>
+    </tbody>
+  </table>
+
+  <h2>常见错误与现象</h2>
+  <table>
+    <thead><tr><th>改动</th><th>现象</th><th>结论</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>只改资源变量名，并同步使用点</td>
+        <td>画面不变</td>
+        <td>外部资源绑定不按变量名匹配</td>
+      </tr>
+      <tr>
+        <td><code>@binding(2)</code> 改成 <code>@binding(3)</code></td>
+        <td><code>Binding is missing from the pipeline layout</code></td>
+        <td>shader 需要的资源槽必须存在于 pipeline layout</td>
+      </tr>
+      <tr>
+        <td><code>uv</code> 从 <code>@location(0)</code> 改成 <code>@location(1)</code></td>
+        <td>前一阶段没有提供输入</td>
+        <td>vertex 输出和 fragment 输入靠 location 对接</td>
+      </tr>
+      <tr>
+        <td>fragment 返回 <code>@location(1)</code></td>
+        <td>当前路径黑屏、无报错</td>
+        <td>颜色没有写到可见 color target 0；输出错槽不一定 validation error</td>
+      </tr>
+      <tr>
+        <td><code>in.position.x &lt; 640.0</code> 分色</td>
+        <td>分界约在左 1/4</td>
+        <td><code>position</code> 是物理 framebuffer 坐标，受 DPI/scale factor 影响</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>position 与 uv 的选择</h2>
+  <table>
+    <thead><tr><th>要表达</th><th>优先使用</th><th>原因</th></tr></thead>
+    <tbody>
+      <tr><td>屏幕左右半、圆形 mask、归一化效果空间</td><td><code>in.uv</code></td><td>范围稳定是 <code>0.0..1.0</code></td></tr>
+      <tr><td>固定像素宽度描边、像素级 kernel、真实 render target 尺寸</td><td><code>in.position</code> + <code>textureDimensions</code></td><td>使用物理像素坐标和真实纹理尺寸</td></tr>
+    </tbody>
+  </table>
+
+  <div class="formula">
+    let size = textureDimensions(source_texture);<br>
+    let half_width = f32(size.x) * 0.5;
+  </div>
+
+  <div class="warning">
+    <strong>调试规则：</strong>接口实验完成后要恢复槽位编号：<code>uv</code> 回到 <code>@location(0)</code>，fragment 返回值回到 <code>@location(0)</code>，material uniform 回到 <code>@binding(2)</code>。
+  </div>
+
+  <footer>
+    依据：<a href="https://www.w3.org/TR/WGSL/#attributes">W3C WGSL attributes</a> ·
+    <a href="../lessons/0024-validate-shader-interface-slots.html">第二十四课</a> ·
+    <a href="shader-functional-model.html">Shader 函数式心智模型</a>
+  </footer>
+</main>
+</body>
+</html>

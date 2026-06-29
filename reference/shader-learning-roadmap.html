@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shader 学习路线图</title>
+  <style>
+    :root { color-scheme: light dark; --ink:#17202a; --muted:#65727e; --paper:#fbfaf7; --panel:#eef3f1; --line:#d7ddd9; --accent:#7c3aed; --code:#20282d; --code-ink:#edf7fb; }
+    @media (prefers-color-scheme: dark) { :root { --ink:#edf2f4; --muted:#a8b3bd; --paper:#15191d; --panel:#20282d; --line:#374047; --accent:#c4b5fd; --code:#10181d; --code-ink:#e8f6fb; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:960px; margin:0 auto; padding:54px 30px 84px; }
+    h1 { margin:0 0 10px; font:700 clamp(2rem,5vw,3.4rem)/1.05 Georgia,"Noto Serif SC",serif; letter-spacing:-.03em; }
+    h2 { margin:42px 0 12px; font-size:1.2rem; }
+    h3 { margin:24px 0 8px; font-size:1rem; }
+    p { max-width:76ch; }
+    .lead { color:var(--muted); font-size:1.08rem; }
+    table { width:100%; border-collapse:collapse; margin:18px 0 26px; }
+    th,td { padding:13px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.8rem; text-transform:uppercase; letter-spacing:.08em; }
+    code { background:var(--panel); padding:.12em .35em; border-radius:4px; }
+    pre { padding:18px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    .phase { margin:24px 0; padding:20px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    .rule { margin:20px 0; padding:17px 20px; border:1px solid var(--line); border-radius:9px; }
+    a { color:var(--accent); }
+    footer { margin-top:46px; color:var(--muted); font-size:.9rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Shader 学习路线图</h1>
+  <p class="lead">后续课程从“能改一个效果”转向“理解普通材质如何接入渲染器”。主线改用 Bevy 的 <code>Material2d</code> / <code>Material3d</code>；<code>FullscreenMaterial</code> 保留为后处理专题，而不是默认教学路径。</p>
+
+  <div class="rule"><strong>路线原则：</strong>先建立普通 material 的 GPU 程序模型和资源绑定模型，再扩展到 vertex/compute、Bevy renderer schedule，最后进入复杂效果设计。复杂特效不是先背公式，而是先拆输入、空间、状态、pass、资源生命周期。</div>
+
+  <h2>阶段 1：WGSL/WESL 语言与资源模型</h2>
+  <table>
+    <thead><tr><th>主题</th><th>要回答的问题</th><th>本项目切入点</th></tr></thead>
+    <tbody>
+      <tr><td><code>@</code> attribute</td><td><code>@fragment</code>、<code>@location</code>、<code>@group</code>、<code>@binding</code> 分别约束谁？</td><td><code>region_color_screen_material.wesl</code></td></tr>
+      <tr><td>资源从何而来</td><td><code>color_texture</code>、<code>color_sampler</code>、<code>material_params</code> 是谁创建和绑定的？</td><td><code>LearningMaterial2d</code> + <code>MeshMaterial2d</code></td></tr>
+      <tr><td>内置函数</td><td><code>textureSample</code> 如何通过 texture、sampler、uv 找到颜色？</td><td>普通 2D material 采样实体自己的贴图</td></tr>
+      <tr><td>模块系统</td><td>WESL <code>import</code> 与 Bevy shader asset 生命周期如何衔接？</td><td><code>effect_layers.wesl</code>、<code>circular_mask.wesl</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>阶段 2：Shader stage 全景</h2>
+  <table>
+    <thead><tr><th>Stage</th><th>核心问题</th><th>练习形态</th></tr></thead>
+    <tbody>
+      <tr><td>Vertex</td><td>顶点输入如何变成裁剪空间位置，并把数据插值给 fragment？</td><td>从 <code>Mesh2d</code> 的 <code>VertexOutput.uv</code> 开始</td></tr>
+      <tr><td>Fragment</td><td>每个片元如何读取插值数据、texture、uniform 并返回颜色？</td><td>扩展 <code>learning_material_2d.wesl</code> 的贴图与条纹效果</td></tr>
+      <tr><td>Compute</td><td>没有固定图元时，invocation id 如何写入 storage buffer 或 texture？</td><td>做一个离屏数据/粒子更新 tracer bullet</td></tr>
+    </tbody>
+  </table>
+
+  <h2>阶段 3：Bevy renderer 路径</h2>
+  <div class="phase">
+    <p><strong>目标：</strong>能解释一个效果从 main world 组件，到 extract、prepare、queue、render graph / render schedule，再到 shader bind group 的路径。</p>
+    <pre><code>App World component
+→ ExtractComponent
+→ Render World resource / component
+→ prepare bind group / pipeline
+→ queue draw item
+→ Render schedule executes pass
+→ WGSL/WESL shader reads bindings</code></pre>
+  </div>
+  <p>这一阶段先从 <code>Material2dPlugin</code> 与 <code>MeshMaterial2d</code> 开始，因为它是普通游戏材质的基本路径。之后再回到 fullscreen post-process、自定义 render node、自定义 pipeline、pass ordering。</p>
+
+  <h2>阶段 4：复杂效果设计方法</h2>
+  <table>
+    <thead><tr><th>效果类型</th><th>先拆什么</th><th>可能用到的技术</th></tr></thead>
+    <tbody>
+      <tr><td>粒子特效</td><td>粒子状态、发射规则、更新位置、渲染方式</td><td>CPU 粒子、GPU storage buffer、compute update、instancing</td></tr>
+      <tr><td>材质与模型交互</td><td>模型空间、UV、法线、mask、材质层</td><td>PBR 扩展、normal map、alpha/mask、screen-space 或 object-space 效果</td></tr>
+      <tr><td>衣物/皮肤叠加</td><td>哪些信息来自贴图，哪些来自几何，哪些来自光照模型</td><td>多贴图采样、材质参数、深度/法线关系、透明与排序约束</td></tr>
+      <tr><td>网络流行视觉</td><td>空间函数、时间函数、噪声、反馈、后处理 pass</td><td>SDF、noise、blur、bloom、distortion、multi-pass composition</td></tr>
+    </tbody>
+  </table>
+
+  <h2>推荐顺序</h2>
+  <ol>
+    <li>先学 <code>@group</code>/<code>@binding</code>/<code>@location</code>：否则不知道 shader 输入来自哪里。</li>
+    <li>再学 <code>Material2d</code> 的 <code>@group(2)</code>：普通材质资源如何进入 shader。</li>
+    <li>再学 <code>texture_2d</code>、<code>sampler</code>、<code>textureSample</code>：这是 2D/3D 材质和后处理的共同基础。</li>
+    <li>然后补 vertex stage：理解 fragment 输入为什么存在。</li>
+    <li>之后进入 <code>Material3d</code> 与 Bevy renderer schedule：理解 Rust 侧如何把资源送到 GPU。</li>
+    <li>最后做 fullscreen、compute 和复杂效果：这时已经能判断一个效果需要几个 pass、哪些 buffer、哪些 texture。</li>
+  </ol>
+
+  <footer>
+    依据：<a href="https://www.w3.org/TR/WGSL/">W3C WGSL specification</a> ·
+    <a href="shader-functional-model.html">Shader 函数式心智模型</a><br>
+    本路线服务于当前目标：阅读并编写游戏效果 shader，而不是系统学习图形学所有分支。
+  </footer>
+</main>
+</body>
+</html>
