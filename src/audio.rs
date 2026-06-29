@@ -30,16 +30,16 @@ pub(super) fn plugin(app: &mut App) {
                 (&PlaybackSettings, &mut AudioSink),
                 (With<Music>, Without<SoundEffect>),
             >| {
-                let Ok((playback, mut sink)) = q_music
-                    .get_mut(ev.entity)
-                    .or_else(|_| q_sfx.get_mut(ev.entity))
-                else {
-                    return;
-                };
-
-                sink.set_volume(
-                    global_volume.volume * channel_volume.music_volume * playback.volume,
-                );
+                if let Ok((playback, mut sink)) = q_music.get_mut(ev.entity) {
+                    sink.set_volume(
+                        global_volume.volume * channel_volume.music_volume * playback.volume,
+                    );
+                }
+                if let Ok((playback, mut sink)) = q_sfx.get_mut(ev.entity) {
+                    sink.set_volume(
+                        global_volume.volume * channel_volume.sound_effect_volume * playback.volume,
+                    );
+                }
             },
         );
 }
