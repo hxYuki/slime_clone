@@ -60,7 +60,8 @@ pub fn game_plugin(app: &mut App) {
         (
             toggle_pause.run_if(escape_input),
             saturate_out_on_pause.run_if(in_state(GamePause::Paused)),
-        ),
+        )
+            .run_if(in_state(AppState::Game)),
     )
     .add_systems(
         OnEnter(GamePause::Paused),
