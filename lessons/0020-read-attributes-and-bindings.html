@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第二十课：读懂 Attribute 与 Binding</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#182126; --muted:#66737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d6ddd9; --accent:#1d4ed8; --good:#18794e; --bad:#b43c3c; --code:#102027; --code-ink:#e9f7fc; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#edf3f1; --muted:#acb8b5; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#93c5fd; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:980px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:18ch; margin:8px 0 16px; font:700 clamp(2.1rem,7vw,4.2rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:76ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    table { width:100%; border-collapse:collapse; margin:20px 0; }
+    th,td { padding:13px 11px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
+    .formula { margin:24px 0; padding:20px 23px; border-radius:9px; background:var(--panel); font:600 1rem/1.8 ui-monospace,SFMono-Regular,monospace; overflow:auto; }
+    .note { margin:23px 0; padding:18px 21px; border:1px solid var(--line); border-radius:9px; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:760px) { .answers { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0020 · Attributes and Bindings</div>
+  <h1>读懂 Attribute 与 Binding</h1>
+  <p class="lead">这节开始从“效果公式”进入“shader 如何接到渲染器”。重点不是背语法，而是能回答：这个输入是谁给的，为什么编号必须对上？</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>能把当前 shader 的 <code>@fragment</code>、<code>@location</code>、<code>@group</code>、<code>@binding</code> 映射到 Bevy <code>FullscreenMaterial</code> 创建的 pipeline 和 bind group。</div>
+
+  <h2>1. Attribute 是给编译器和渲染管线看的标记</h2>
+  <table>
+    <thead><tr><th>Attribute</th><th>约束对象</th><th>在当前 shader 的含义</th></tr></thead>
+    <tbody>
+      <tr><td><code>@fragment</code></td><td>函数</td><td>这个函数是 fragment stage 入口，会为片元计算输出颜色</td></tr>
+      <tr><td><code>@location(0)</code></td><td>参数字段或返回值</td><td>把 vertex 输出的 <code>uv</code> 接到 fragment 输入；把返回颜色写到第 0 个 color target</td></tr>
+      <tr><td><code>@builtin(position)</code></td><td>参数字段</td><td>使用 GPU/管线内置语义，不占普通 location</td></tr>
+      <tr><td><code>@group(0) @binding(n)</code></td><td>全局资源变量</td><td>声明 shader 要读取 bind group 0 里的第 n 个资源</td></tr>
+    </tbody>
+  </table>
+
+  <pre><code>struct FullscreenVertexOutput {
+    @builtin(position) position: vec4&lt;f32&gt;,
+    @location(0) uv: vec2&lt;f32&gt;,
+}
+
+@fragment
+fn fragment(in: FullscreenVertexOutput) -&gt; @location(0) vec4&lt;f32&gt; {
+    return textureSample(screen_texture, texture_sampler, in.uv);
+}</code></pre>
+
+  <h2>2. Binding 编号不是变量名决定的</h2>
+  <p>shader 里的变量名 <code>screen_texture</code> 只是 shader 内部名称。GPU 真正匹配的是 <code>group</code>、<code>binding</code>、资源类型。</p>
+
+  <pre><code>@group(0) @binding(0) var screen_texture: texture_2d&lt;f32&gt;;
+@group(0) @binding(1) var texture_sampler: sampler;
+@group(0) @binding(2) var&lt;uniform&gt; material: RegionColorScreenMaterial;</code></pre>
+
+  <p>当前 Bevy fork 的 <code>FullscreenMaterial</code> 创建 layout 时，顺序是：</p>
+  <pre><code>BindGroupLayoutEntries::sequential(
+    ShaderStages::FRAGMENT,
+    (
+        texture_2d(...),      // binding 0
+        sampler(...),         // binding 1
+        uniform_buffer&lt;T&gt;(...), // binding 2
+    ),
+)</code></pre>
+
+  <h2>3. 资源值从哪里来</h2>
+  <p>layout 只定义“槽位长什么样”。真正塞进槽位的是 <code>prepare_bind_groups</code>：</p>
+  <pre><code>BindGroupEntries::sequential((
+    texture,                 // binding 0: view_target 的 source texture
+    &amp;fullscreen_pipeline.sampler, // binding 1: Bevy 创建的 sampler
+    settings_binding.clone(), // binding 2: ComponentUniforms&lt;T&gt;
+))</code></pre>
+
+  <table>
+    <thead><tr><th>Shader 声明</th><th>Bevy 来源</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>screen_texture</code></td><td><code>ViewTarget</code> 的 post-process source texture</td><td>读取前面 pass 已经画好的屏幕颜色</td></tr>
+      <tr><td><code>texture_sampler</code></td><td><code>RenderDevice::create_sampler</code></td><td>告诉 GPU 如何按 UV 读取 texture</td></tr>
+      <tr><td><code>material</code></td><td><code>ComponentUniforms&lt;RegionColorScreenMaterial&gt;</code></td><td>读取 Rust 同步过来的效果参数</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4. 最后在 render pass 里绑定</h2>
+  <pre><code>render_pass.set_bind_group(0, bind_group, &amp;[settings_index.index()]);
+render_pass.draw(0..3, 0..1);</code></pre>
+  <p><code>set_bind_group(0, ...)</code> 对应 shader 的 <code>@group(0)</code>。<code>draw(0..3)</code> 画一个全屏三角形；它的 vertex shader 产生 <code>@location(0) uv</code>，fragment 才能收到 <code>in.uv</code>。</p>
+
+  <div class="note"><strong>阅读规则：</strong>看到 <code>@group(g) @binding(b)</code>，不要先猜变量名含义。先在 Rust pipeline / bind group layout 里找 group <code>g</code> 的 binding <code>b</code> 是什么类型、由谁填值。</div>
+
+  <section class="quiz" data-answer="a">
+    <strong>shader 资源匹配主要靠什么？</strong>
+    <div class="answers">
+      <button data-choice="a">组号绑定类型</button>
+      <button data-choice="b">变量名字相同</button>
+      <button data-choice="c">文件路径相同</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong><code>in.uv</code> 为什么能进入 fragment？</strong>
+    <div class="answers">
+      <button data-choice="a">位置编号匹配</button>
+      <button data-choice="b">采样器会生成</button>
+      <button data-choice="c">uniform 会传入</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>实际练习：</strong>
+    <ol>
+      <li>打开 <code>assets/shaders/region_color_screen_material.wesl</code>。</li>
+      <li>在三个 <code>@group(0) @binding(...)</code> 声明上方添加一段注释，写清 binding 0/1/2 分别来自 Bevy 哪个资源。</li>
+      <li>在 <code>fragment</code> 函数上方添加一句注释，解释 <code>in.uv</code> 来自 vertex shader 的 <code>@location(0)</code> 输出。</li>
+      <li>不要改 binding 编号、类型或函数逻辑。</li>
+      <li>完成后告诉我“已完成”，我会检查注释是否和真实 Bevy 绑定路径一致。</li>
+    </ol>
+  </div>
+
+  <footer>
+    主来源：<a href="https://www.w3.org/TR/WGSL/#attributes">WGSL attributes</a> ·
+    本机 Bevy fork：<code>crates/bevy_core_pipeline/src/fullscreen_material.rs</code> ·
+    <a href="0019-helper-parameter-ownership.html">上一课</a> ·
+    <a href="0021-texture-sampler-sample.html">下一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a>
+  </footer>
+</main>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：attribute 是 shader 和渲染管线之间的接口契约。'
+          : '回到接口契约：编号、类型、stage 必须和 Rust 管线创建代码一致。';
+      });
+    });
+  });
+</script>
+</body>
+</html>

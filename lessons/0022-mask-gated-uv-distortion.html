@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第二十二课：用 Mask 控制 UV 扭曲</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#182126; --muted:#66737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d6ddd9; --accent:#7c2d12; --good:#18794e; --bad:#b43c3c; --code:#102027; --code-ink:#e9f7fc; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#edf3f1; --muted:#acb8b5; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#fdba74; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:980px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:18ch; margin:8px 0 16px; font:700 clamp(2.1rem,7vw,4.2rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:76ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    table { width:100%; border-collapse:collapse; margin:20px 0; }
+    th,td { padding:13px 11px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
+    .formula { margin:24px 0; padding:20px 23px; border-radius:9px; background:var(--panel); font:600 1rem/1.8 ui-monospace,SFMono-Regular,monospace; overflow:auto; }
+    .note { margin:23px 0; padding:18px 21px; border:1px solid var(--line); border-radius:9px; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:760px) { .answers { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0022 · Masked Distortion</div>
+  <h1>用 Mask 控制 UV 扭曲</h1>
+  <p class="lead">上一课的 UV 偏移移动了整张屏幕。真实效果通常不会整屏移动，而是在某个区域内折射、扭曲或错位。这个“区域”仍然用 mask 控制。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>把全屏 <code>sample_uv = in.uv + offset</code> 改成 <code>sample_uv = in.uv + offset * mask</code>，让偏移只在聚光区域明显发生。</div>
+
+  <h2>1. 颜色 mask 也能控制采样地址</h2>
+  <p>之前你用 mask 控制 <code>mix</code> 的强度：</p>
+  <pre><code>let lit_color = mix(darken_color, rect_color, spotlight_mask);</code></pre>
+  <p>同一个 mask 也可以控制 UV 偏移强度：</p>
+  <pre><code>let distortion = vec2&lt;f32&gt;(0.03, 0.0) * spotlight_mask;
+let sample_uv = in.uv + distortion;
+let rect_color = textureSample(screen_texture, texture_sampler, sample_uv);</code></pre>
+
+  <div class="formula">采样地址 = 原始地址 + 偏移方向 × 作用域 mask</div>
+
+  <h2>2. 这会产生什么画面</h2>
+  <table>
+    <thead><tr><th>区域</th><th><code>spotlight_mask</code></th><th>采样偏移</th><th>视觉结果</th></tr></thead>
+    <tbody>
+      <tr><td>聚光中心</td><td>接近 <code>1</code></td><td>接近完整 <code>0.03</code></td><td>明显向右取色，所以局部内容看起来向左错位</td></tr>
+      <tr><td>软边</td><td><code>0..1</code> 之间</td><td>逐渐减弱</td><td>偏移平滑过渡</td></tr>
+      <tr><td>外侧暗区</td><td>接近 <code>0</code></td><td>接近无偏移</td><td>保持原采样</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. 先算 mask，再采样</h2>
+  <p>当前 shader 先采样 <code>rect_color</code>，后算 <code>spotlight_mask</code>。本课需要反过来：因为采样地址要用到 mask。</p>
+  <pre><code>let wave = sin(material.elapsed_secs * 3.1415926) * 0.06;
+let spotlight_mask = circular_mask(
+    in.uv,
+    material.spotlight_center,
+    material.spotlight_radius + wave,
+    material.spotlight_softness,
+    material.ratio,
+);
+
+let distortion = vec2&lt;f32&gt;(0.03, 0.0) * spotlight_mask;
+let sample_uv = in.uv + distortion;
+var rect_color = textureSample(screen_texture, texture_sampler, sample_uv);</code></pre>
+
+  <div class="note"><strong>关键边界：</strong>mask 用 <code>in.uv</code> 算，因为它描述“当前屏幕位置是否属于效果区域”；texture 用 <code>sample_uv</code> 采样，因为它描述“当前屏幕位置要从哪里取颜色”。这两个 UV 不一定相同。</div>
+
+  <h2>4. 这是折射效果的基本形状</h2>
+  <p>很多热浪、水面、玻璃、冲击波都可以拆成：</p>
+  <div class="formula">mask 决定哪里发生<br>direction 决定往哪里取色<br>amount 决定偏移多大<br>textureSample 读取偏移后的颜色</div>
+
+  <section class="quiz" data-answer="a">
+    <strong>为什么本课要先算 <code>spotlight_mask</code>？</strong>
+    <div class="answers">
+      <button data-choice="a">采样地址要用</button>
+      <button data-choice="b">颜色不能读取</button>
+      <button data-choice="c">sampler 会改变</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong>mask 乘到 offset 上表示什么？</strong>
+    <div class="answers">
+      <button data-choice="a">控制偏移强度</button>
+      <button data-choice="b">改变纹理格式</button>
+      <button data-choice="c">删除边缘颜色</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>实际练习：</strong>
+    <ol>
+      <li>打开 <code>assets/shaders/region_color_screen_material.wesl</code>。</li>
+      <li>把 <code>wave</code> 和 <code>spotlight_mask</code> 移到第一次 <code>textureSample</code> 之前。</li>
+      <li>把 <code>let sample_uv = in.uv + vec2&lt;f32&gt;(0.03, 0.0);</code> 改成 <code>let sample_uv = in.uv + vec2&lt;f32&gt;(0.03, 0.0) * spotlight_mask;</code>。</li>
+      <li>删除后面重复的 <code>wave</code> / <code>spotlight_mask</code> 定义，避免同名变量重复。</li>
+      <li>运行游戏，确认只有聚光附近明显错位，外侧不再整屏平移；完成后告诉我“已完成”。</li>
+    </ol>
+  </div>
+
+  <footer>
+    主来源：<a href="https://www.w3.org/TR/WGSL/#texture-builtin-functions">WGSL texture built-in functions</a> ·
+    <a href="0021-texture-sampler-sample.html">上一课</a> ·
+    <a href="0023-radial-wave-uv-distortion.html">下一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a>
+  </footer>
+</main>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：mask 不只控制颜色混合，也可以控制采样地址偏移。'
+          : '重新分层：mask 描述作用域，offset 描述取色方向和幅度。';
+      });
+    });
+  });
+</script>
+</body>
+</html>

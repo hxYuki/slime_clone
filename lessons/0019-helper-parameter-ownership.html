@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第十九课：决定参数归属</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#182126; --muted:#66737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d6ddd9; --accent:#0f766e; --good:#18794e; --bad:#b43c3c; --code:#102027; --code-ink:#e9f7fc; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#edf3f1; --muted:#acb8b5; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#80cbc4; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:940px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:16ch; margin:8px 0 16px; font:700 clamp(2.1rem,7vw,4.2rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:72ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    table { width:100%; border-collapse:collapse; margin:20px 0; }
+    th,td { padding:13px 11px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
+    .formula { margin:24px 0; padding:20px 23px; border-radius:9px; background:var(--panel); font:600 1rem/1.8 ui-monospace,SFMono-Regular,monospace; overflow:auto; }
+    .note { margin:23px 0; padding:18px 21px; border:1px solid var(--line); border-radius:9px; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:760px) { .answers { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0019 · Parameter Ownership</div>
+  <h1>决定参数归属</h1>
+  <p class="lead">抽出 helper 后，下一件事不是把所有数字都变成 uniform。先判断：这个数字由谁负责？公式、调用点、uniform，还是游戏组件？</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>把圆环亮度 <code>0.12</code> 提升为 <code>ScreenSpotlight</code> 驱动的 uniform，同时保留 <code>frequency</code> 与 <code>speed</code> 作为调用点常量。</div>
+
+  <h2>1. 四种归属</h2>
+  <table>
+    <thead><tr><th>放置位置</th><th>判断标准</th><th>本项目例子</th></tr></thead>
+    <tbody>
+      <tr><td>helper 内部</td><td>公式的一部分，调用者通常不该改</td><td><code>sin(x) * 0.5 + 0.5</code> 的归一化</td></tr>
+      <tr><td>调用点字面量</td><td>这个 shader 的固定风格，暂时不需要游戏侧配置</td><td><code>radial_wave(..., 32.0, 6.0, time)</code></td></tr>
+      <tr><td>uniform 字段</td><td>一次 draw 共享，但可能随相机、材质或时间变化</td><td><code>spotlight_radius</code>、<code>elapsed_secs</code></td></tr>
+      <tr><td>Rust 组件</td><td>游戏侧希望表达的效果意图</td><td><code>ScreenSpotlight.center</code>、<code>radius</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="formula">game intent → component → sync system → uniform → shader helper arguments</div>
+  <p>helper 仍然保持纯函数：它不直接读取 <code>material</code>。fragment 负责把 uniform 和局部输入整理成 helper 参数。</p>
+
+  <h2>2. 为什么这次只提升 <code>ring_brightness</code></h2>
+  <p><code>ring * 0.12</code> 控制圆环有多亮，是明显的视觉风格参数。它适合被标题相机或不同关卡配置，所以可以进入 <code>ScreenSpotlight</code>。</p>
+  <p><code>32.0</code> 与 <code>6.0</code> 分别控制波纹密度和速度。它们也可以提升，但本课先只移动一个字段；每次只改变一个归属，才容易验证画面和 uniform 布局。</p>
+
+  <h2>3. 这次替换 padding，不追加字段</h2>
+  <pre><code>// Rust: RegionColorScreenMaterial 尾部
+spotlight_center: Vec2,
+elapsed_secs: f32,
+ring_brightness: f32, // 替换 _padding: f32
+
+// WESL: RegionColorScreenMaterial 尾部
+spotlight_center: vec2&lt;f32&gt;,
+elapsed_secs: f32,
+ring_brightness: f32, // 替换 _padding: f32</code></pre>
+  <p>当前尾部 <code>_padding: f32</code> 本来只是占位。用同类型字段替换它，字段偏移和总大小应保持不变；如果追加在后面，反而会扩大 uniform 结构。</p>
+
+  <h2>4. 数据流应该变成这样</h2>
+  <pre><code>// src/region_color_screen_material.rs
+pub struct ScreenSpotlight {
+    pub center: Vec2,
+    pub radius: f32,
+    pub softness: f32,
+    pub ring_brightness: f32,
+}
+
+screen_material.ring_brightness = spotlight.ring_brightness;</code></pre>
+
+  <pre><code>// assets/shaders/region_color_screen_material.wesl
+let ringed_color = add_masked_rgb(
+    lit_color,
+    ring * material.ring_brightness,
+    ring_strength,
+);</code></pre>
+
+  <div class="note"><strong>判断规则：</strong>能被游戏设计调的值，优先从组件进入；只影响当前公式形状、且暂时没有配置需求的值，先留在调用点。不要为了“看起来更通用”把所有数字都提升。</div>
+
+  <section class="quiz" data-answer="a">
+    <strong><code>ring_brightness</code> 应该属于哪一层？</strong>
+    <div class="answers">
+      <button data-choice="a">组件同步字段</button>
+      <button data-choice="b">函数内部常量</button>
+      <button data-choice="c">每片元局部值</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong>本课为什么不先把 <code>frequency</code>/<code>speed</code> 也提升？</strong>
+    <div class="answers">
+      <button data-choice="a">控制改动范围</button>
+      <button data-choice="b">删除所有参数</button>
+      <button data-choice="c">跳过布局验证</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>实际编码：</strong>
+    <ol>
+      <li>给 <code>ScreenSpotlight</code> 增加 <code>ring_brightness: f32</code>，默认值设为 <code>0.12</code>。</li>
+      <li>在 <code>spawn_camera</code> 的 <code>ScreenSpotlight</code> 字面量中补上 <code>ring_brightness: 0.12</code>；想看明显变化时可临时改到 <code>0.2</code>。</li>
+      <li>把 Rust 与 WESL material 里的 <code>_padding: f32</code> 都替换为 <code>ring_brightness: f32</code>。</li>
+      <li>在同步系统里写入 <code>screen_material.ring_brightness = spotlight.ring_brightness</code>。</li>
+      <li>把 <code>ring * 0.12</code> 改为 <code>ring * material.ring_brightness</code>。</li>
+      <li>运行游戏确认效果可调；完成后告诉我“已完成”。</li>
+    </ol>
+  </div>
+
+  <footer>
+    主来源：<a href="https://www.w3.org/TR/WGSL/#address-space-layout-constraints">WGSL address space layout constraints</a> ·
+    <a href="0018-extract-effect-layer-helper.html">上一课</a> ·
+    <a href="0020-read-attributes-and-bindings.html">下一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a><br>
+    如果运行时报 uniform/layout 相关错误，先检查 Rust 与 WESL 字段顺序、类型和是否误把字段追加到了结构尾部。
+  </footer>
+</main>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：先确定参数归属，再决定代码放在哪里。'
+          : '重新问：这个值由游戏配置、draw 共享环境、调用点风格，还是公式本身负责？';
+      });
+    });
+  });
+</script>
+</body>
+</html>

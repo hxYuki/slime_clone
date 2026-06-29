@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第二十一课：Texture、Sampler、textureSample</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#182126; --muted:#66737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d6ddd9; --accent:#b45309; --good:#18794e; --bad:#b43c3c; --code:#102027; --code-ink:#e9f7fc; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#edf3f1; --muted:#acb8b5; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#fbbf24; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:980px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:18ch; margin:8px 0 16px; font:700 clamp(2.1rem,7vw,4.2rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:76ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    table { width:100%; border-collapse:collapse; margin:20px 0; }
+    th,td { padding:13px 11px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
+    .formula { margin:24px 0; padding:20px 23px; border-radius:9px; background:var(--panel); font:600 1rem/1.8 ui-monospace,SFMono-Regular,monospace; overflow:auto; }
+    .note { margin:23px 0; padding:18px 21px; border:1px solid var(--line); border-radius:9px; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:760px) { .answers { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0021 · Sampling</div>
+  <h1>Texture、Sampler、textureSample</h1>
+  <p class="lead">上一课知道了三个 binding 从哪里来。现在要读懂它们如何合作：texture 是数据，sampler 是读取策略，UV 是地址，<code>textureSample</code> 是读取动作。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>能预测把 <code>textureSample(..., in.uv)</code> 改成 <code>textureSample(..., in.uv + offset)</code> 时，画面会从哪里取色、边缘会怎样处理。</div>
+
+  <h2>1. 三件东西各做一件事</h2>
+  <table>
+    <thead><tr><th>对象</th><th>不是</th><th>职责</th></tr></thead>
+    <tbody>
+      <tr><td><code>texture_2d&lt;f32&gt;</code></td><td>不是函数</td><td>一张二维颜色数据；采样后得到 <code>vec4&lt;f32&gt;</code></td></tr>
+      <tr><td><code>sampler</code></td><td>不是颜色</td><td>规定越界时怎么处理、落在 texel 中间时怎么过滤</td></tr>
+      <tr><td><code>uv</code></td><td>不是像素坐标</td><td>归一化地址；当前全屏 pass 可把可见区域理解为 <code>0..1</code></td></tr>
+      <tr><td><code>textureSample</code></td><td>不是随机查找</td><td>用 texture、sampler、uv 返回当前位置对应的颜色</td></tr>
+    </tbody>
+  </table>
+
+  <div class="formula">color = textureSample(texture_data, read_policy, normalized_address)</div>
+
+  <h2>2. 当前项目里的真实 sampler</h2>
+  <p><code>FullscreenMaterial</code> 使用：</p>
+  <pre><code>let sampler = render_device.create_sampler(&amp;SamplerDescriptor::default());</code></pre>
+  <p>在当前依赖的 <code>wgpu-types 29.0.3</code> 中，默认 sampler 是：</p>
+  <table>
+    <thead><tr><th>策略</th><th>默认值</th><th>效果</th></tr></thead>
+    <tbody>
+      <tr><td>address mode</td><td><code>ClampToEdge</code></td><td>UV 小于 0 或大于 1 时，夹到边缘颜色</td></tr>
+      <tr><td>mag/min filter</td><td><code>Nearest</code></td><td>靠最近 texel 取值，偏像素风</td></tr>
+      <tr><td>mipmap filter</td><td><code>Nearest</code></td><td>选择最近 mip level；当前全屏 source 通常不靠它制造效果</td></tr>
+    </tbody>
+  </table>
+  <p>所以如果你采样 <code>uv.x = 1.03</code>，默认不会 wrap 到左侧，而是夹到右边缘。</p>
+
+  <h2>3. 改 UV，就是改“从哪里取色”</h2>
+  <pre><code>let base = textureSample(screen_texture, texture_sampler, in.uv);
+let shifted = textureSample(screen_texture, texture_sampler, in.uv + vec2&lt;f32&gt;(0.03, 0.0));</code></pre>
+  <p>第二行在当前片元位置，读取“更右边一点”的屏幕颜色。结果显示到当前片元，所以视觉上通常像内容向左错位；右边缘会因为 <code>ClampToEdge</code> 被拉成边缘颜色。</p>
+
+  <h2>4. 采样和效果组合的关系</h2>
+  <p>之前的 mask、mix、ring 都是在“已经取到一个颜色”之后变换颜色。本课开始，你可以在取色这一步制造效果：</p>
+  <table>
+    <thead><tr><th>改什么</th><th>效果类型</th><th>例子</th></tr></thead>
+    <tbody>
+      <tr><td>改颜色</td><td>调色、灰化、发光</td><td><code>color.rgb *= 0.25</code></td></tr>
+      <tr><td>改 mask</td><td>区域、软边、优先级</td><td><code>mix(dark, color, spotlight_mask)</code></td></tr>
+      <tr><td>改 UV</td><td>扭曲、波纹、偏移、折射</td><td><code>textureSample(texture, sampler, uv + distortion)</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="note"><strong>关键判断：</strong>如果效果像“画面被移动/扭曲/折射”，通常先看采样 UV；如果效果像“颜色被改变”，通常先看采样后的颜色变换。</div>
+
+  <section class="quiz" data-answer="a">
+    <strong><code>sampler</code> 主要决定什么？</strong>
+    <div class="answers">
+      <button data-choice="a">读取边界策略</button>
+      <button data-choice="b">颜色公式结果</button>
+      <button data-choice="c">uniform 布局</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong><code>uv + vec2(0.03, 0)</code> 表示什么？</strong>
+    <div class="answers">
+      <button data-choice="a">向右取颜色</button>
+      <button data-choice="b">向左写颜色</button>
+      <button data-choice="c">增加透明度</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>实际练习：</strong>
+    <ol>
+      <li>打开 <code>assets/shaders/region_color_screen_material.wesl</code>。</li>
+      <li>在第一处 <code>textureSample</code> 前加上 <code>let sample_uv = in.uv + vec2&lt;f32&gt;(0.03, 0.0);</code>。</li>
+      <li>把该处采样改成 <code>textureSample(screen_texture, texture_sampler, sample_uv)</code>。</li>
+      <li>运行游戏，观察画面内容整体向哪边错位，以及右边缘/左边缘哪个更明显。</li>
+      <li>完成后告诉我“已完成”，并最好附一句观察结果。这个改动可作为临时实验，下一步我会决定保留、收窄成局部扭曲，或还原。</li>
+    </ol>
+  </div>
+
+  <footer>
+    主来源：<a href="https://www.w3.org/TR/WGSL/#texture-builtin-functions">WGSL texture built-in functions</a> ·
+    本机依赖：<code>wgpu-types 29.0.3 SamplerDescriptor</code> ·
+    <a href="0020-read-attributes-and-bindings.html">上一课</a> ·
+    <a href="0022-mask-gated-uv-distortion.html">下一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a>
+  </footer>
+</main>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：textureSample 的第三个参数决定从 texture 的哪里取色。'
+          : '重新分层：texture 是数据，sampler 是读取策略，uv 是读取地址。';
+      });
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第二十四课：验证 Shader 接口槽位</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#182126; --muted:#66737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d6ddd9; --accent:#0f766e; --good:#18794e; --bad:#b43c3c; --code:#102027; --code-ink:#e9f7fc; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#edf3f1; --muted:#acb8b5; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#5eead4; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:980px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:18ch; margin:8px 0 16px; font:700 clamp(2.1rem,7vw,4.2rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:76ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    table { width:100%; border-collapse:collapse; margin:20px 0; }
+    th,td { padding:13px 11px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
+    .formula { margin:24px 0; padding:20px 23px; border-radius:9px; background:var(--panel); font:600 1rem/1.8 ui-monospace,SFMono-Regular,monospace; overflow:auto; }
+    .note { margin:23px 0; padding:18px 21px; border:1px solid var(--line); border-radius:9px; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:760px) { .answers { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0024 · Interface Slots</div>
+  <h1>验证 Shader 接口槽位</h1>
+  <p class="lead">上一课读懂了 attribute。本课把它变成可验证的接口模型：改变量名、改 binding、改 location、读 builtin，观察 Bevy/wgpu 的真实反应。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>能解释为什么改资源变量名不影响画面，改 binding 会触发管线验证错误，改输入 location 会报前一阶段未提供输入，而改 fragment 输出 location 在当前路径下表现为黑屏。</div>
+
+  <h2>1. 变量名不是资源接口</h2>
+  <pre><code>@group(0) @binding(0) var source_texture: texture_2d&lt;f32&gt;;
+
+var rect_color = textureSample(source_texture, texture_sampler, sample_uv);</code></pre>
+  <p>把 <code>screen_texture</code> 改成 <code>source_texture</code> 后画面不变，因为资源匹配不看变量名。shader 内部必须使用同一个名字，但 Bevy/GPU 对外只关心 <code>@group(0) @binding(0)</code> 和类型。</p>
+
+  <h2>2. Binding 数字是资源 ABI</h2>
+  <pre><code>@group(0) @binding(3) var&lt;uniform&gt; material: RegionColorScreenMaterial;</code></pre>
+  <p>当前 fullscreen material pipeline 只准备了 group 0 的 binding 0/1/2。shader 要 binding 3 时，管线创建失败：</p>
+  <pre><code>Shader global ResourceBinding { group: 0, binding: 3 } is not available in the pipeline layout
+Binding is missing from the pipeline layout</code></pre>
+  <p>这类错误说明 shader 声明的外部资源接口和 Rust/Bevy 创建的 pipeline layout 不一致。</p>
+
+  <h2>3. 输入 location 是 stage 之间的槽位</h2>
+  <pre><code>struct FullscreenVertexOutput {
+    @builtin(position) position: vec4&lt;f32&gt;,
+    @location(1) uv: vec2&lt;f32&gt;,
+}</code></pre>
+  <p>fragment 期待 <code>@location(1)</code> 的 <code>uv</code>，但 Bevy 的 fullscreen vertex shader 实际输出 <code>@location(0)</code>。所以验证错误会指向：管线前一阶段没有提供输入。</p>
+
+  <div class="formula">vertex output @location(n) → fragment input @location(n)</div>
+
+  <h2>4. 输出 location 不一定报错</h2>
+  <pre><code>@fragment
+fn fragment(in: FullscreenVertexOutput) -&gt; @location(1) vec4&lt;f32&gt; {
+    return vec4&lt;f32&gt;(1.0, 0.0, 0.0, 1.0);
+}</code></pre>
+  <p>当前实验中没有报错，而是界面变黑。更准确的解释是：shader 写到了 color output 1，但当前显示路径读取的是 color attachment 0。输出没有进入可见目标。</p>
+  <div class="note"><strong>规则修正：</strong>输入 location 缺失通常会直接报 pipeline interface 错误；fragment 输出 location 不匹配可能报错，也可能只是写不到当前显示目标。实际行为取决于 pipeline、后端和目标配置。</div>
+
+  <h2>5. Builtin position 是物理坐标</h2>
+  <pre><code>if in.position.x &lt; 640.0 {
+    return vec4&lt;f32&gt;(1.0, 0.0, 0.0, 1.0);
+} else {
+    return vec4&lt;f32&gt;(0.0, 0.0, 1.0, 1.0);
+}</code></pre>
+  <p>在你的窗口里，<code>640.0</code> 约在左 1/4，而不是左 50%。原因是 <code>@builtin(position)</code> 在 fragment 阶段接近 render target / framebuffer 的物理像素坐标，不等于 Bevy window 的逻辑尺寸 <code>1280 × 720</code>。DPI 缩放会扩大实际 fragment 坐标范围。</p>
+
+  <p>如果要用真实物理宽度分割，查询 texture 尺寸：</p>
+  <pre><code>let size = textureDimensions(source_texture);
+let half_width = f32(size.x) * 0.5;
+
+if in.position.x &lt; half_width {
+    return vec4&lt;f32&gt;(1.0, 0.0, 0.0, 1.0);
+}
+return vec4&lt;f32&gt;(0.0, 0.0, 1.0, 1.0);</code></pre>
+
+  <p>如果要按归一化屏幕空间分割，直接用 <code>uv</code>：</p>
+  <pre><code>if in.uv.x &lt; 0.5 {
+    return vec4&lt;f32&gt;(1.0, 0.0, 0.0, 1.0);
+}
+return vec4&lt;f32&gt;(0.0, 0.0, 1.0, 1.0);</code></pre>
+
+  <table>
+    <thead><tr><th>接口</th><th>用途</th><th>本课验证</th></tr></thead>
+    <tbody>
+      <tr><td><code>@group/@binding</code></td><td>外部资源进入 shader</td><td>变量名不重要，binding 数字必须存在</td></tr>
+      <tr><td><code>@location</code></td><td>stage 输入输出槽位</td><td>输入缺失报错；输出错槽可能黑屏</td></tr>
+      <tr><td><code>@builtin</code></td><td>GPU 管线内建语义</td><td><code>position</code> 是物理 framebuffer 坐标</td></tr>
+    </tbody>
+  </table>
+
+  <section class="quiz" data-answer="a">
+    <strong>为什么改 <code>screen_texture</code> 变量名后画面不变？</strong>
+    <div class="answers">
+      <button data-choice="a">绑定槽位未变</button>
+      <button data-choice="b">采样器会改名</button>
+      <button data-choice="c">纹理自动复制</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong><code>in.position.x &lt; 640.0</code> 不在屏幕一半处，最可能说明什么？</strong>
+    <div class="answers">
+      <button data-choice="a">坐标是物理像素</button>
+      <button data-choice="b">uv 发生了旋转</button>
+      <button data-choice="c">颜色目标丢失</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>复习练习：</strong>
+    <ol>
+      <li>确认 <code>assets/shaders/fullscreen_vertex_output.wesl</code> 中 <code>uv</code> 已恢复为 <code>@location(0)</code>。</li>
+      <li>确认 <code>fragment</code> 返回值已恢复为 <code>@location(0) vec4&lt;f32&gt;</code>。</li>
+      <li>在脑中复述：<code>@group/@binding</code>、<code>@location</code>、<code>@builtin</code> 分别约束谁。</li>
+      <li>下一课进入 <code>textureLoad</code>：用整数像素坐标读取 texture，并和 <code>textureSample</code> 对比。</li>
+    </ol>
+  </div>
+
+  <footer>
+    主来源：<a href="https://www.w3.org/TR/WGSL/#attributes">WGSL attributes</a> ·
+    <a href="0023-radial-wave-uv-distortion.html">上一课</a> ·
+    <a href="../reference/shader-interface-contracts.html">接口速查</a>
+  </footer>
+</main>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：shader 接口靠槽位和语义对接，不靠字段名猜测。'
+          : '回到接口模型：资源看 group/binding，stage 数据看 location，内建数据看 builtin。';
+      });
+    });
+  });
+</script>
+</body>
+</html>

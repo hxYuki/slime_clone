@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第二十六课：Render Schedule 与 Fullscreen Pass 顺序</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#182126; --muted:#65727a; --paper:#fbfaf7; --panel:#eef3f1; --line:#d6ddd9; --accent:#0f766e; --warn:#b45309; --good:#18794e; --bad:#b43c3c; --code:#102027; --code-ink:#e9f7fc; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#edf3f1; --muted:#acb8b5; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#5eead4; --warn:#fbbf24; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:980px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:20ch; margin:8px 0 16px; font:700 clamp(2.1rem,7vw,4.1rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:76ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    table { width:100%; border-collapse:collapse; margin:20px 0; }
+    th,td { padding:13px 11px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
+    .flow { margin:24px 0; padding:20px 23px; border-radius:9px; background:var(--panel); font:600 1rem/1.85 ui-monospace,SFMono-Regular,monospace; overflow:auto; }
+    .note { margin:23px 0; padding:18px 21px; border:1px solid var(--line); border-radius:9px; }
+    .warn { border-left:4px solid var(--warn); }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:760px) { .answers { grid-template-columns:1fr; } }
+    @media print { main { max-width:none; padding:24px; } a { color:inherit; text-decoration:none; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0026 · Render Schedule</div>
+  <h1>Render Schedule 决定 Fullscreen Pass 看见什么、影响什么</h1>
+  <p class="lead">同一段 shader 代码，放在 UI 之前、UI 之后、upscaling 之后，结果完全不同。本课把这次实验收束成一个可复用的判断规则。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>能解释为什么当前 fullscreen effect 必须放在 <code>ui_pass</code> 之后、<code>upscaling</code> 之前。</div>
+
+  <h2>1. 当前项目的正确顺序</h2>
+  <pre><code>fn schedule() -&gt; impl ScheduleLabel + Clone {
+    bevy::core_pipeline::Core2d
+}
+
+fn schedule_configs(system: ScheduleConfigs&lt;BoxedSystem&gt;) -&gt; ScheduleConfigs&lt;BoxedSystem&gt; {
+    system
+        .after(ui_render::ui_pass)
+        .before(core_pipeline::upscaling::upscaling)
+}</code></pre>
+
+  <p>这不是任意写法。它明确要求当前 pass 位于 UI 绘制之后、最终输出之前。</p>
+
+  <div class="flow">2D main pass / post process
+        ↓
+ui_pass
+        ↓
+RegionColorScreenMaterial fullscreen pass
+        ↓
+upscaling
+        ↓
+window output</div>
+
+  <h2>2. FullscreenMaterial 实际做了什么</h2>
+  <p>Bevy 的 <code>FullscreenMaterialPlugin</code> 会把你的 material 系统插入你指定的 schedule。系统内部通过 <code>ViewTarget::post_process_write()</code> 拿到一对 texture：</p>
+
+  <table>
+    <thead><tr><th>角色</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td><code>source</code></td><td>当前已经渲染好的上一张 ViewTarget texture，shader 从这里读。</td></tr>
+      <tr><td><code>destination</code></td><td>本 pass 要写入的下一张 ViewTarget texture。</td></tr>
+    </tbody>
+  </table>
+
+  <p>所以 fullscreen pass 本质是一次“读旧屏幕 → 写新屏幕”的后处理。它读到什么，完全取决于它之前已经有哪些 pass 写过。</p>
+
+  <h2>3. 实验 A：放在 UI 之前</h2>
+  <pre><code>system.before(ui_render::ui_pass)</code></pre>
+  <p>观察结果：聚光范围外是黑色，并快速闪出原本背景；UI 不受影响。</p>
+  <p>解释：fullscreen pass 运行时，UI 还没有画入 source texture。之后 <code>ui_pass</code> 会再画一次 UI，所以 UI 看起来没有被 shader 处理。</p>
+
+  <div class="note warn"><strong>判断规则：</strong>如果一个后处理要影响 UI，它必须排在 UI 绘制之后。</div>
+
+  <h2>4. 实验 B：放在 upscaling 之后</h2>
+  <pre><code>system.after(core_pipeline::upscaling::upscaling)</code></pre>
+  <p>观察结果：整个效果都不会显示。</p>
+  <p>解释：<code>upscaling</code> 已经把 <code>ViewTarget.main_texture_view()</code> blit 到窗口输出。之后 fullscreen pass 即使继续写 ViewTarget 的内部 texture，也已经错过了本帧最终呈现的位置。</p>
+
+  <div class="note warn"><strong>判断规则：</strong>如果一个后处理要显示到窗口，它必须排在最终输出 pass 之前。</div>
+
+  <h2>5. Render schedule 的分层</h2>
+  <p>这里容易混淆：<code>Render</code>、<code>RenderGraph</code>、<code>Core2d</code> 都是 schedule，但它们处在不同层。</p>
+
+  <table>
+    <thead><tr><th>层级</th><th>Schedule</th><th>职责</th></tr></thead>
+    <tbody>
+      <tr><td>Main App</td><td><code>Main</code> / <code>Update</code> / <code>PostUpdate</code></td><td>游戏逻辑、输入、状态、UI 数据变化。</td></tr>
+      <tr><td>Extract</td><td><code>ExtractSchedule</code></td><td>把主世界数据复制到 render world。</td></tr>
+      <tr><td>RenderApp</td><td><code>Render</code></td><td>准备 GPU 资源、排队 draw items、运行 render backend。</td></tr>
+      <tr><td>Root render graph</td><td><code>RenderGraph</code></td><td>驱动每帧的渲染图与 camera schedules。</td></tr>
+      <tr><td>Camera pipeline</td><td><code>Core2d</code> / <code>Core3d</code></td><td>真正按相机执行 main pass、postprocess、UI、upscaling。</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6. 本项目的实用结论</h2>
+  <p>当前效果是“作用于最终 2D + UI 画面，但在窗口输出前处理”。因此位置应保持：</p>
+  <pre><code>system
+    .after(ui_render::ui_pass)
+    .before(core_pipeline::upscaling::upscaling)</code></pre>
+
+  <p>如果之后要做真正 two-pass blur，可以继续在 <code>Core2d</code> 里添加第二个 fullscreen pass，关键是明确 pass 1 的输出如何成为 pass 2 的输入，而不是只在同一个 shader 里写两个 helper。</p>
+
+  <section class="quiz" data-answer="b">
+    <strong>如果一个 fullscreen post-process 要影响 UI，应该放在哪里？</strong>
+    <div class="answers">
+      <button data-choice="a">UI 之前</button>
+      <button data-choice="b">UI 之后</button>
+      <button data-choice="c">Startup 中</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="task">
+    <strong>下一步练习：</strong>把当前实验用的 <code>after(upscaling)</code> 恢复为 <code>after(ui_pass).before(upscaling)</code>，然后回答：为什么 shader 本身没有变，但效果重新出现？
+  </section>
+
+  <footer>
+    参考：本地 Bevy 0.19 源码 <code>bevy_app/main_schedule.rs</code>、<code>bevy_render/lib.rs</code>、<code>bevy_core_pipeline/schedule.rs</code>、<code>bevy_ui_render/lib.rs</code>、<code>bevy_core_pipeline/fullscreen_material.rs</code>、<code>upscaling/node.rs</code>。另见 <a href="../reference/bevy-schedules.html">Bevy Schedule 速查</a> 与 <a href="0025-texture-load-cross-blur.html">第二十五课</a>。
+  </footer>
+</main>
+<script>
+  for (const quiz of document.querySelectorAll('.quiz')) {
+    const answer = quiz.dataset.answer;
+    const feedback = quiz.querySelector('.feedback');
+    for (const button of quiz.querySelectorAll('button')) {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === answer;
+        feedback.textContent = ok ? '正确。UI 必须先画进 source texture，post-process 才能处理它。' : '不对。问的是“影响 UI”，所以 pass 必须排在 UI 绘制之后。';
+        feedback.className = 'feedback ' + (ok ? 'good' : 'bad');
+      });
+    }
+  }
+</script>
+</body>
+</html>

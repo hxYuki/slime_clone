@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第二十五课：textureLoad 与十字形 Blur</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#182126; --muted:#66737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d6ddd9; --accent:#c2410c; --good:#18794e; --bad:#b43c3c; --code:#102027; --code-ink:#e9f7fc; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#edf3f1; --muted:#acb8b5; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#fdba74; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:980px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:18ch; margin:8px 0 16px; font:700 clamp(2.1rem,7vw,4.2rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:76ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    table { width:100%; border-collapse:collapse; margin:20px 0; }
+    th,td { padding:13px 11px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
+    .formula { margin:24px 0; padding:20px 23px; border-radius:9px; background:var(--panel); font:600 1rem/1.8 ui-monospace,SFMono-Regular,monospace; overflow:auto; }
+    .note { margin:23px 0; padding:18px 21px; border:1px solid var(--line); border-radius:9px; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:760px) { .answers { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0025 · Texture Load Blur</div>
+  <h1>textureLoad 与十字形 Blur</h1>
+  <p class="lead">本课从 UV 采样切换到像素坐标采样：用 <code>textureLoad</code> 精确读取当前像素的左右/上下邻居，并用 mask 把模糊限制在聚光区域内。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>能解释为什么 <code>textureLoad</code> 适合像素邻域操作，并能区分“单 pass 十字形 blur”和“真正 two-pass blur”。</div>
+
+  <h2>1. textureSample 与 textureLoad 的分工</h2>
+  <table>
+    <thead><tr><th>函数</th><th>坐标</th><th>是否使用 sampler</th><th>适合场景</th></tr></thead>
+    <tbody>
+      <tr><td><code>textureSample</code></td><td>归一化 <code>uv</code></td><td>使用</td><td>贴图采样、UV 扭曲、热浪、水波</td></tr>
+      <tr><td><code>textureLoad</code></td><td>整数像素坐标</td><td>不使用</td><td>邻域采样、模糊、描边、边缘检测</td></tr>
+    </tbody>
+  </table>
+  <div class="formula">textureLoad(texture, pixel_coord, mip_level) → texel color</div>
+
+  <h2>2. 3 点横向模糊</h2>
+  <p>最小横向 blur 只读取三个点：左、当前、右。</p>
+  <pre><code>fn horizontal_blur3(source: texture_2d&lt;f32&gt;, pixel_pos: vec2&lt;i32&gt;, offset: i32) -&gt; vec4&lt;f32&gt; {
+    let size = vec2&lt;i32&gt;(textureDimensions(source));
+    let center_pixel = clamp(pixel_pos, vec2&lt;i32&gt;(0), size - vec2&lt;i32&gt;(1));
+
+    let left_pixel = clamp(center_pixel + vec2&lt;i32&gt;(-offset, 0), vec2&lt;i32&gt;(0), size - vec2&lt;i32&gt;(1));
+    let right_pixel = clamp(center_pixel + vec2&lt;i32&gt;(offset, 0), vec2&lt;i32&gt;(0), size - vec2&lt;i32&gt;(1));
+
+    let left_color = textureLoad(source, left_pixel, 0);
+    let center_color = textureLoad(source, center_pixel, 0);
+    let right_color = textureLoad(source, right_pixel, 0);
+
+    return (left_color + center_color + right_color) / 3.0;
+}</code></pre>
+  <p><code>offset</code> 是物理像素距离。它不是 UV，也不是逻辑窗口单位。</p>
+
+  <h2>3. 用 mask 限制 blur 作用域</h2>
+  <p>helper 只负责“如何模糊”；fragment 负责“在哪里应用”。</p>
+  <pre><code>let position = vec2&lt;i32&gt;(in.position.xy);
+let center_color = textureLoad(source_texture, position, 0);
+let blur_color = horizontal_blur3(source_texture, position, 8);
+
+var rect_color = mix(center_color, blur_color, spotlight_mask);</code></pre>
+  <p>这个结构和颜色变暗一样，都是 <code>mix(A, B, mask)</code>。区别只是 <code>B</code> 现在是像素邻域计算出的模糊结果。</p>
+
+  <h2>4. 纵向 blur 只是偏移方向变了</h2>
+  <pre><code>let top_pixel = center_pixel + vec2&lt;i32&gt;(0, -offset);
+let bottom_pixel = center_pixel + vec2&lt;i32&gt;(0, offset);</code></pre>
+  <p>横向和纵向 blur 的本质一样：都是从当前像素附近取样。方向由 offset 向量决定。</p>
+
+  <h2>5. 保留的当前效果：十字形 blur</h2>
+  <pre><code>let offset = 12;
+let v_blur = vertical_blur3(source_texture, position, offset);
+let h_blur = horizontal_blur3(source_texture, position, offset);
+let blur_color = (v_blur + h_blur) * 0.5;
+
+var rect_color = mix(center_color, blur_color, spotlight_mask);</code></pre>
+  <p>这会同时产生横向和纵向拖影。它是一个有用的 single-pass 近似效果。</p>
+
+  <div class="note"><strong>命名建议：</strong>把它叫做 cross blur 或 single-pass cross blur。不要把它叫做 two-pass blur。</div>
+
+  <h2>6. 为什么这不是 two-pass blur</h2>
+  <p>在同一个 fragment shader 里：</p>
+  <pre><code>let h = horizontal_blur3(source_texture, position, offset);
+let v = vertical_blur3(source_texture, position, offset);</code></pre>
+  <p><code>h</code> 和 <code>v</code> 都读取原始 <code>source_texture</code>。它们不是先后处理关系。</p>
+
+  <div class="formula">single pass cross blur: source → horizontal(source) 和 vertical(source) → average</div>
+
+  <p>真正 two-pass blur 是：</p>
+  <div class="formula">pass 1: source → horizontal blurred texture<br>pass 2: horizontal blurred texture → vertical blurred final image</div>
+
+  <table>
+    <thead><tr><th>方案</th><th>第二步读取什么</th><th>覆盖范围</th></tr></thead>
+    <tbody>
+      <tr><td>单 pass 横纵平均</td><td>原图</td><td>十字形方向样本</td></tr>
+      <tr><td>two-pass separable blur</td><td>横向模糊后的中间图</td><td>近似二维区域</td></tr>
+    </tbody>
+  </table>
+
+  <section class="quiz" data-answer="a">
+    <strong><code>textureLoad</code> 为什么适合 blur？</strong>
+    <div class="answers">
+      <button data-choice="a">能读邻居像素</button>
+      <button data-choice="b">自动应用 sampler</button>
+      <button data-choice="c">自动生成 mask</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong>为什么当前十字 blur 不是 two-pass？</strong>
+    <div class="answers">
+      <button data-choice="a">都读取原图</button>
+      <button data-choice="b">没有使用 uv</button>
+      <button data-choice="c">offset 太小</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>当前保留状态：</strong>
+    <ol>
+      <li>保留 <code>horizontal_blur3</code> 与 <code>vertical_blur3</code> helper。</li>
+      <li>fragment 中保留 <code>blur_color = (v_blur + h_blur) * 0.5</code>。</li>
+      <li>继续用 <code>spotlight_mask</code> 控制模糊作用域。</li>
+      <li>下一课进入 Bevy renderer schedule：真正 two-pass 需要两个 fullscreen pass 和中间纹理/ ping-pong。</li>
+    </ol>
+  </div>
+
+  <footer>
+    主来源：<a href="https://www.w3.org/TR/WGSL/#texture-builtin-functions">WGSL texture builtins</a> ·
+    <a href="0024-validate-shader-interface-slots.html">上一课</a> ·
+    <a href="../reference/texture-load-and-blur.html">TextureLoad 与 Blur 速查</a>
+  </footer>
+</main>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：像素邻域效果的关键是能稳定读取相邻 texel。'
+          : '回到读取路径：textureLoad 用整数像素坐标直接读取 texel。';
+      });
+    });
+  });
+</script>
+</body>
+</html>

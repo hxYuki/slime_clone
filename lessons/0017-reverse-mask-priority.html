@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第十七课：反向 Mask 与效果优先级</title>
+  <style>
+    :root { color-scheme:light dark; --ink:#172026; --muted:#65737c; --paper:#fbfaf7; --panel:#eef3f1; --line:#d5dcd8; --accent:#0f766e; --good:#18794e; --bad:#b43c3c; --code:#102027; --code-ink:#e9f7fc; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#ecf3f1; --muted:#aab7b4; --paper:#151a19; --panel:#202826; --line:#3a4542; --accent:#7dd3c7; --good:#72d5a3; --bad:#ff9292; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:17px/1.65 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+    main { max-width:940px; margin:auto; padding:58px 28px 90px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { max-width:16ch; margin:8px 0 16px; font:700 clamp(2.1rem,7vw,4.2rem)/1.03 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; }
+    h2 { margin:46px 0 12px; font-size:1.25rem; }
+    p { max-width:72ch; }
+    .lead { color:var(--muted); font-size:1.1rem; }
+    .win { margin:28px 0; padding:18px 22px; border-left:4px solid var(--accent); background:var(--panel); }
+    pre { padding:22px; overflow:auto; border-radius:9px; background:var(--code); color:var(--code-ink); font:14px/1.7 ui-monospace,SFMono-Regular,monospace; }
+    code { padding:.12em .35em; border-radius:4px; background:var(--panel); }
+    pre code { padding:0; background:none; }
+    table { width:100%; border-collapse:collapse; margin:20px 0; }
+    th,td { padding:13px 11px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
+    .formula { margin:24px 0; padding:20px 23px; border-radius:9px; background:var(--panel); font:600 1rem/1.8 ui-monospace,SFMono-Regular,monospace; overflow:auto; }
+    .note { margin:23px 0; padding:18px 21px; border:1px solid var(--line); border-radius:9px; }
+    .quiz { margin-top:26px; padding:22px; border:1px solid var(--line); border-radius:10px; }
+    .answers { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    button { padding:12px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--accent); outline:none; }
+    .feedback { min-height:1.7em; margin:13px 0 0; font-weight:650; }
+    .feedback.good { color:var(--good); } .feedback.bad { color:var(--bad); }
+    .task { margin-top:40px; padding:21px; border-radius:10px; background:var(--panel); }
+    a { color:var(--accent); }
+    footer { margin-top:52px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:760px) { .answers { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0017 · Mask Priority</div>
+  <h1>反向 Mask 与效果优先级</h1>
+  <p class="lead">你现在已经会命名效果层。本课只换一类输入：不改圆环形状，而是改变圆环允许影响的区域。</p>
+
+  <div class="win"><strong>本课胜利条件：</strong>圆环不再影响聚光中心，而是只在暗区中扩散；聚光亮区保持干净。</div>
+
+  <h2>1. 同一个 mask，可以表示两个区域</h2>
+  <pre><code>let light_region = spotlight_mask;
+let dark_region = 1.0 - spotlight_mask;</code></pre>
+  <p><code>spotlight_mask</code> 越接近 1，越属于聚光亮区；<code>1.0 - spotlight_mask</code> 越接近 1，越属于聚光外侧暗区。</p>
+
+  <table>
+    <thead><tr><th>Gate</th><th>公式</th><th>圆环出现在哪里</th></tr></thead>
+    <tbody>
+      <tr><td>亮区优先</td><td><code>ring * spotlight_mask</code></td><td>聚光内部</td></tr>
+      <tr><td>暗区优先</td><td><code>ring * (1.0 - spotlight_mask)</code></td><td>聚光外部</td></tr>
+      <tr><td>边缘优先</td><td><code>ring * spotlight_mask * (1.0 - spotlight_mask) * 4.0</code></td><td>聚光软边</td></tr>
+    </tbody>
+  </table>
+
+  <h2>2. 优先级就是谁先保护自己的区域</h2>
+  <div class="formula">ring_strength = ring_shape × allowed_region</div>
+  <p>圆环形状 <code>ring</code> 仍然全屏存在；真正决定它能不能改颜色的是 <code>allowed_region</code>。这就是效果优先级：聚光中心要干净，就让圆环的 allowed region 排除中心。</p>
+
+  <h2>3. 本课修改点</h2>
+  <pre><code>let ring_target = vec4&lt;f32&gt;(lit_color.rgb + vec3&lt;f32&gt;(ring * 0.12), lit_color.a);
+
+let dark_region = 1.0 - spotlight_mask;
+let ring_strength = ring * dark_region;
+
+let ringed_color = mix(lit_color, ring_target, ring_strength);</code></pre>
+  <p>注意：<code>ring_target</code> 仍然基于 <code>lit_color</code>，所以圆环是在已有聚光结果上继续叠加。改变的是“哪里允许叠加”，不是“叠加成什么颜色”。</p>
+
+  <div class="note"><strong>调试规则：</strong>如果一个效果跑到不该出现的位置，先不要改颜色，先检查 <code>strength</code> 的 gate。把 gate 单独输出为灰度图通常能最快定位问题。</div>
+
+  <section class="quiz" data-answer="a">
+    <strong><code>1.0 - spotlight_mask</code> 表示什么？</strong>
+    <div class="answers">
+      <button data-choice="a">聚光外侧</button>
+      <button data-choice="b">聚光中心</button>
+      <button data-choice="c">纹理采样</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <section class="quiz" data-answer="a">
+    <strong>哪个 gate 会让圆环只出现在聚光边缘？</strong>
+    <div class="answers">
+      <button data-choice="a">亮暗相乘</button>
+      <button data-choice="b">只用亮区</button>
+      <button data-choice="c">只用暗区</button>
+    </div>
+    <p class="feedback" aria-live="polite"></p>
+  </section>
+
+  <div class="task">
+    <strong>实际编码：</strong>
+    <ol>
+      <li>只改 <code>assets/shaders/region_color_screen_material.wesl</code>，Rust 不变。</li>
+      <li>保留 <code>rect_color</code>、<code>lit_color</code>、<code>ring_target</code>、<code>ring_strength</code> 的命名层结构。</li>
+      <li>新增 <code>dark_region = 1.0 - spotlight_mask</code>。</li>
+      <li>把 <code>ring_strength</code> 改为 <code>ring * dark_region</code>。</li>
+      <li>运行游戏，确认聚光中心基本不再出现圆环；完成后告诉我“已完成”。</li>
+    </ol>
+  </div>
+
+  <footer>
+    主来源：<a href="https://www.w3.org/TR/WGSL/#floating-point-builtin-functions">WGSL floating point builtins</a> ·
+    <a href="0016-effect-layer-order.html">上一课</a> ·
+    <a href="../reference/shader-functional-model.html">心智模型速查</a><br>
+    如果画面不明显，可以临时把 <code>ring * 0.12</code> 提高到 <code>ring * 0.2</code>，验证后再调回。
+  </footer>
+</main>
+<script>
+  document.querySelectorAll('.quiz').forEach((quiz) => {
+    quiz.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const ok = button.dataset.choice === quiz.dataset.answer;
+        const feedback = quiz.querySelector('.feedback');
+        feedback.className = `feedback ${ok ? 'good' : 'bad'}`;
+        feedback.textContent = ok
+          ? '正确：反向 mask 用来保护原本的高值区域。'
+          : '先判断 spotlight_mask 在聚光中心接近 1 还是接近 0。';
+      });
+    });
+  });
+</script>
+</body>
+</html>
