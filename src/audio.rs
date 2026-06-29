@@ -1,40 +1,52 @@
-use bevy::{audio::Volume, prelude::*};
+use std::time::Duration;
+
+use bevy::{
+    audio::Volume,
+    prelude::*,
+    settings::{ReflectSettingsGroup, SaveSettingsDeferred, SaveSettingsSync, SettingsGroup},
+};
 
 pub(super) fn plugin(app: &mut App) {
-    app.insert_resource::<ChannelVolume>(ChannelVolume {
-        music_volume: Volume::Linear(1.),
-        sound_effect_volume: Volume::Linear(1.),
-    })
-    .add_systems(
-        Update,
-        apply_global_volume
-            .run_if(resource_changed::<GlobalVolume>.or_eager(resource_changed::<ChannelVolume>)),
-    )
-    .add_observer(
-        |ev: On<Add, AudioSink>,
-         global_volume: Res<GlobalVolume>,
-         channel_volume: Res<ChannelVolume>,
-         mut q_sfx: Query<
-            (&PlaybackSettings, &mut AudioSink),
-            (With<SoundEffect>, Without<Music>),
-        >,
-         mut q_music: Query<
-            (&PlaybackSettings, &mut AudioSink),
-            (With<Music>, Without<SoundEffect>),
-        >| {
-            let Ok((playback, mut sink)) = q_music
-                .get_mut(ev.entity)
-                .or_else(|_| q_sfx.get_mut(ev.entity))
-            else {
-                return;
-            };
+    app
+        //     .insert_resource::<ChannelVolume>(ChannelVolume {
+        //     music_volume: Volume::Linear(1.),
+        //     sound_effect_volume: Volume::Linear(1.),
+        // })
+        .add_systems(
+            Update,
+            apply_global_volume.run_if(
+                resource_changed::<GlobalVolume>.or_eager(resource_changed::<ChannelVolume>),
+            ),
+        )
+        .add_observer(
+            |ev: On<Add, AudioSink>,
+             global_volume: Res<GlobalVolume>,
+             channel_volume: Res<ChannelVolume>,
+             mut q_sfx: Query<
+                (&PlaybackSettings, &mut AudioSink),
+                (With<SoundEffect>, Without<Music>),
+            >,
+             mut q_music: Query<
+                (&PlaybackSettings, &mut AudioSink),
+                (With<Music>, Without<SoundEffect>),
+            >| {
+                let Ok((playback, mut sink)) = q_music
+                    .get_mut(ev.entity)
+                    .or_else(|_| q_sfx.get_mut(ev.entity))
+                else {
+                    return;
+                };
 
-            sink.set_volume(global_volume.volume * channel_volume.music_volume * playback.volume);
-        },
-    );
+                sink.set_volume(
+                    global_volume.volume * channel_volume.music_volume * playback.volume,
+                );
+            },
+        );
 }
 
-#[derive(Resource, Reflect, Default)]
+#[derive(Resource, SettingsGroup, Reflect, Default)]
+#[reflect(Resource, SettingsGroup, Default)]
+#[settings_group(group = "audio")]
 pub struct ChannelVolume {
     pub music_volume: Volume,
     pub sound_effect_volume: Volume,
@@ -88,6 +100,8 @@ fn apply_global_volume(
     channel_volume: Res<ChannelVolume>,
     mut q_sfx: Query<(&PlaybackSettings, &mut AudioSink), (With<SoundEffect>, Without<Music>)>,
     mut q_music: Query<(&PlaybackSettings, &mut AudioSink), (With<Music>, Without<SoundEffect>)>,
+
+    mut commands: Commands,
 ) {
     for (playback, mut sink) in &mut q_music {
         sink.set_volume(global_volume.volume * channel_volume.music_volume * playback.volume);
@@ -97,4 +111,6 @@ fn apply_global_volume(
             global_volume.volume * channel_volume.sound_effect_volume * playback.volume,
         );
     }
+
+    commands.queue(SaveSettingsDeferred(Duration::from_secs_f32(0.1)));
 }

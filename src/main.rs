@@ -16,6 +16,7 @@ use bevy::asset::AssetMetaCheck;
 use bevy::core_pipeline::fullscreen_material::FullscreenMaterialPlugin;
 use bevy::ecs::template::template;
 use bevy::prelude::*;
+use bevy::settings::SettingsPlugin;
 
 use crate::game::game_plugin;
 use crate::material::saturate_out_screen_material::{self, SaturateOutScreenMaterial};
@@ -61,6 +62,9 @@ impl Plugin for AppPlugin {
                 })
                 .set(ImagePlugin::default_nearest()),
         );
+        app.add_plugins(SettingsPlugin::new(
+            "org.example.mono.dungeon_slime_tutorial.settings",
+        ));
 
         app.add_plugins((
             region_color_screen_material::plugins,
@@ -94,15 +98,6 @@ impl Plugin for AppPlugin {
             })
             .after(spawn_camera),
         );
-
-        // app.add_systems(
-        //     Update,
-        //     (
-        //         switch_state,
-        //         // #[cfg(feature = "dev")]
-        //         // bevy::dev_tools::states::log_transitions::<AppState>,
-        //     ),
-        // );
     }
 }
 
