@@ -3,7 +3,7 @@ use std::time::Duration;
 use bevy::{
     audio::Volume,
     prelude::*,
-    settings::{ReflectSettingsGroup, SaveSettingsDeferred, SaveSettingsSync, SettingsGroup},
+    settings::{ReflectSettingsGroup, SaveSettingsDeferred, SettingsGroup},
 };
 
 pub(super) fn plugin(app: &mut App) {

@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use bevy::{asset::UntypedAssetId, prelude::*, state};
+use bevy::{asset::UntypedAssetId, prelude::*};
 
 pub(super) fn plugin(app: &mut App) {
     app.init_resource::<ResourceHandles>()

@@ -2,10 +2,8 @@ use bevy::{
     image::{ImageArrayLayout, ImageLoaderSettings},
     prelude::*,
     sprite_render::{TileData, TilemapChunk, TilemapChunkTileData},
-    ui_widgets::ScrollbarThumb,
 };
 
-// TODO: test this one
 pub fn room() -> impl Scene {
     let tile_data = vec![
         00, 01, 02, 01, 02, 01, 02, 01, 02, 01, 02, 01, 02, 01, 02, 03, //

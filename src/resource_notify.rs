@@ -1,11 +1,7 @@
 use std::marker::PhantomData;
 
 use bevy::{
-    ecs::{
-        lifecycle::HookContext,
-        system::{SystemHandle, SystemId},
-        world::DeferredWorld,
-    },
+    ecs::{lifecycle::HookContext, system::SystemHandle, world::DeferredWorld},
     prelude::*,
 };
 

@@ -1,14 +1,15 @@
-use bevy::audio::Volume;
-use bevy::ecs::system::system_value;
-use bevy::prelude::*;
-use bevy::scene::prelude::*;
-use bevy::ui_widgets::{SliderValue, ValueChange};
+use bevy::{
+    audio::Volume,
+    ecs::system::system_value,
+    prelude::*,
+    ui_widgets::{SliderValue, ValueChange},
+};
 
 use crate::audio::ChannelVolume;
-use crate::resource_notify::{ResourceChangeHandler, subscribe_to};
+use crate::resource_notify::subscribe_to;
 use crate::title::{TitleState, change_title_state_to_main};
 use crate::ui::{
-    InFocusGroup, StyledButton, StyledSlider, button_text_style, font_04B_30, slider_ui,
+    InFocusGroup, StyledButton, StyledSlider, button_text_style, font_04B_30,
     ui_root_despawn_on_exit,
 };
 

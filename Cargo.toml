@@ -6,9 +6,15 @@ edition = "2024"
 
 [dependencies]
 # Use only features needed for a 2D game to improve compile time and size
-bevy = { git="https://github.com/hxYuki/bevy", rev="444f8d5ef", default-features = false, features = ["2d","audio-all-formats", "ui", "shader_format_wesl", "bevy_settings"] }
+bevy = { git = "https://github.com/hxYuki/bevy", rev = "31317bf43a106b4ccc80331de688f1885925b6c1", default-features = false, features = [
+    "2d",
+    "audio-all-formats",
+    "ui",
+    "shader_format_wesl",
+    "bevy_settings",
+] }
 # bevy = {path="../bevy", default-features = false, features = ["2d","audio-all-formats", "ui", "shader_format_wesl", "bevy_settings"] }
- # bevy = { version = "0.19.0", default-features = false, features = ["2d","audio-all-formats", "ui", "shader_format_wesl", "bevy_settings"] }
+# bevy = { version = "0.19.0", default-features = false, features = ["2d","audio-all-formats", "ui", "shader_format_wesl", "bevy_settings"] }
 inventory = "0.3"
 rand = "0.9"
 # Compile out low-severity logs to improve performance.
@@ -32,7 +38,7 @@ dev = [
     "bevy/bevy_ui_debug",
     # Improve error messages coming from Bevy
     "bevy/track_location",
-    "bevy/debug"
+    "bevy/debug",
 ]
 dev_native = [
     "dev",

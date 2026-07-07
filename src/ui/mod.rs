@@ -10,7 +10,7 @@ use bevy::{
         lifecycle::HookContext,
         observer::On,
         relationship::RelationshipSourceCollection,
-        system::{SystemHandle, SystemHandleTemplate, SystemId, system_value},
+        system::{SystemHandle, SystemHandleTemplate, system_value},
         template::FromTemplate,
         world::DeferredWorld,
     },
@@ -20,13 +20,12 @@ use bevy::{
     scene::{Scene, bsn, template_value},
     state::{state::States, state_scoped::DespawnOnExit},
     ui::{Node, percent},
-    ui_widgets::{Slider, SliderRange, SliderThumb, SliderValue, TrackClick, ValueChange},
+    ui_widgets::{Slider, SliderRange, SliderThumb, SliderValue, TrackClick},
 };
 pub use options::*;
 pub use title::*;
 
 use crate::{
-    casacading_components,
     region_color_screen_material::UiGreyout,
     resource_notify::ResourceChangeHandler,
     sprite_animation::{FrameAnimation, FrameAnimationSet, PlaybackMode},
@@ -83,9 +82,6 @@ fn focus_group_observer(mut world: DeferredWorld, ctx: HookContext) {
 #[derive(Component, Debug, Clone, Default)]
 pub struct GroupFocused(pub bool);
 
-#[derive(Event, Debug)]
-pub struct ButtonFocusedEvent(Entity);
-
 #[derive(Component, FromTemplate)]
 pub struct Callback(SystemHandle);
 
@@ -102,33 +98,6 @@ pub fn press_trigger_callback(
         .expect(
             "You should only use on_press_trigger_callback on entities with a Callback component",
         );
-}
-
-pub fn change_control_focus(
-    focused: On<Pointer<Enter>>,
-    mut focusables: Query<(Entity, &InFocusGroup, &mut GroupFocused)>,
-    focus_groups: Query<&FocusGroup>,
-    time: Res<Time>,
-    mut commands: Commands,
-) {
-    let Ok(mut focused_control) = focusables.get_mut(focused.entity) else {
-        return;
-    };
-    focused_control.2.0 = true;
-
-    let control_group = focused_control.1.0;
-
-    focus_groups
-        .get(control_group)
-        .unwrap()
-        .0
-        .iter()
-        .filter(|&b| b != focused.entity)
-        .for_each(|b| {
-            if let Ok(mut unfocused) = focusables.get_mut(b) {
-                unfocused.2.0 = false;
-            }
-        });
 }
 
 #[derive(EntityEvent, Debug)]
@@ -316,7 +285,7 @@ impl StyledSlider {
                         justify_items: JustifyItems::Stretch,
                     }
                     Children [
-                        slider_knot(KnotPosition::Left, "OFF".to_string(), px(20.0)),
+                        slider_knot(KnotPosition::Left, "OFF".to_string(), px(35.0)),
                         (
                             slider_ui()
                             ~Node {
@@ -325,7 +294,7 @@ impl StyledSlider {
                             { props.slider_modifiers }
                             ResourceChangeHandler({ props.resource_change_handler })
                         ),
-                        slider_knot(KnotPosition::Right, "MAX".to_string(), px(20.0)),
+                        slider_knot(KnotPosition::Right, "MAX".to_string(), px(35.0)),
                     ]
                 ),
             ]
@@ -378,7 +347,7 @@ fn slider_knot(position: KnotPosition, text: String, font_size: Val) -> impl Sce
             }
             Text::new(text)
             TextColor(Color::srgb_u32(0x465682))
-            font_04B_30(px(35))
+            font_04B_30(font_size)
         )]
     }
 }

@@ -1,13 +1,12 @@
 use std::time::Duration;
 
 use bevy::{
-    color::palettes::css::{GREEN, RED, WHITE},
+    color::palettes::css::WHITE,
     ecs::{system::system_value, template::template},
     image::TextureAtlasTemplate,
     input::gamepad::{GamepadRumbleIntensity, GamepadRumbleRequest},
-    platform::collections::HashMap,
     prelude::*,
-    scene::{CommandsSceneExt, Scene, bsn, on},
+    scene::{CommandsSceneExt, Scene, bsn},
 };
 
 use crate::{
@@ -15,7 +14,7 @@ use crate::{
     assets_tracker::{AssetState, cleanup_resource, load_resource},
     audio::{music_bundle, sound_effect_bundle},
     change_state_to_title,
-    gameobjects::{Bat, Room, Slime, room},
+    gameobjects::{Bat, Slime, room},
     material::saturate_out_screen_material::SaturateOutScreenMaterial,
     sprite_animation::PauseAnimaiton,
     ui::{InFocusGroup, StyledButton, button_text_style, font_04B_30, ui_root_despawn_on_exit},
@@ -612,21 +611,11 @@ fn player_score(
     mut game_state: ResMut<GameState>,
     mut query: Query<&mut TextSpan, With<ScoreText>>,
 ) {
-    info!("{} player score", player_score.0);
+    trace!("{} player score", player_score.0);
     game_state.player_score += 1;
 
     let Ok(mut text) = query.single_mut() else {
         return;
     };
     **text = (game_state.player_score * 100).to_string();
-}
-
-fn update_score_text(
-    game_state: If<Res<GameState>>,
-    mut query: Query<&mut TextSpan, With<ScoreText>>,
-) {
-    let Ok(mut text) = query.single_mut() else {
-        return;
-    };
-    **text = game_state.player_score.to_string();
 }

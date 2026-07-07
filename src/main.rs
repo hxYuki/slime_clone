@@ -1,7 +1,5 @@
 mod assets_tracker;
 mod audio;
-mod bsn_asset_with_settings;
-mod casacading_components;
 mod game;
 mod gameobjects;
 mod material;
@@ -11,17 +9,11 @@ mod sprite_animation;
 mod title;
 mod ui;
 
-use bevy::app::AppExit;
-use bevy::asset::AssetMetaCheck;
-use bevy::core_pipeline::fullscreen_material::FullscreenMaterialPlugin;
-use bevy::ecs::template::template;
-use bevy::prelude::*;
-use bevy::settings::SettingsPlugin;
+use bevy::{app::AppExit, prelude::*, settings::SettingsPlugin};
 
 use crate::game::game_plugin;
 use crate::material::saturate_out_screen_material::{self, SaturateOutScreenMaterial};
 use crate::region_color_screen_material::RegionColor;
-use crate::ui::ui_root_despawn_on_exit;
 
 fn main() -> AppExit {
     App::new().add_plugins(AppPlugin).run()
@@ -85,19 +77,6 @@ impl Plugin for AppPlugin {
         app.add_plugins((title::plugin, game_plugin));
 
         app.add_systems(Startup, spawn_camera);
-        app.add_systems(
-            PostStartup,
-            (|camera: Query<(&Camera, &GlobalTransform)>| {
-                let camera = camera.single().unwrap();
-                let ndc_outside = camera
-                    .0
-                    .world_to_ndc(camera.1, Vec3::new(-10000000.0, -10000000.0, 0.0));
-                let ndc_inside = camera.0.world_to_ndc(camera.1, Vec3::new(10.0, 10.0, 0.0));
-
-                info!("NDC outside: {:?}, inside: {:?}", ndc_outside, ndc_inside);
-            })
-            .after(spawn_camera),
-        );
     }
 }
 
