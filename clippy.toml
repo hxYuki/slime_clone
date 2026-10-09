@@ -1,2 +1,2 @@
 # Require `bevy_ecs::children!` to use `[]` braces, instead of `()` or `{}`.
-standard-macro-braces = [{ name = "children", brace = "[" }, { name = "bsn_list", brace = "[" }]
+standard-macro-braces = [{ name = "children", brace = "[" }]

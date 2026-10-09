@@ -30,15 +30,6 @@ fn notify_on_resource_change<R: Resource>(
     });
 }
 
-fn initial_run_on_handler_spwan(
-    handler: Query<(Entity, &ResourceChangeHandler), Added<ResourceChangeHandler>>,
-    mut commands: Commands,
-) {
-    for (entity, handler) in handler.iter() {
-        commands.run_system_with(&handler.0, entity);
-    }
-}
-
 #[derive(EntityEvent)]
 pub struct ResourceChanged<R: Resource> {
     entity: Entity,
@@ -62,10 +53,8 @@ impl<R: Resource> ResourceSubscribe<R> {
     pub fn on_add(mut world: DeferredWorld, _ctx: HookContext) {
         world.resource_mut::<Schedules>().add_systems(
             Update,
-            (
-                initial_run_on_handler_spwan,
-                notify_on_resource_change::<R>.run_if(resource_changed::<R>),
-            ),
+            notify_on_resource_change::<R>
+                .run_if(resource_changed::<R>.or_eager(resource_added::<R>)),
         );
     }
 }
@@ -84,13 +73,56 @@ struct ResourceSubscribers<R: Resource> {
     _marker: PhantomData<R>,
 }
 
+impl<R: Resource> Default for ResourceSubscribers<R> {
+    fn default() -> Self {
+        Self {
+            subscribers: Vec::new(),
+            _marker: PhantomData,
+        }
+    }
+}
+
 #[derive(Component)]
 #[relationship(relationship_target = ResourceSubscribers<R>)]
+#[component(on_add)]
 struct SubscribeTo<R: Resource>(#[relationship] Entity, PhantomData<R>);
 
+impl<R: Resource> FromWorld for SubscribeTo<R> {
+    fn from_world(world: &mut World) -> Self {
+        let res = world.init_resource::<ResourceSubscribe<R>>();
+
+        let rid = world.resource_entities().get(res).unwrap();
+
+        Self::new(rid)
+    }
+}
+
 impl<R: Resource> SubscribeTo<R> {
-    pub fn new(entity: Entity) -> Self {
+    fn new(entity: Entity) -> Self {
         Self(entity, PhantomData)
+    }
+
+    pub fn on_add(mut world: DeferredWorld, ctx: HookContext) {
+        fn run_handler<R: Resource>(
+            res_changed: On<ResourceChanged<R>>,
+            mut commands: Commands,
+            q_h: Query<&ResourceChangeHandler>,
+        ) {
+            let Ok(handler) = q_h.get(res_changed.entity) else {
+                warn!(
+                    "Entity {:?} is subscribing to changes of resource {:?} but doesn't have a ResourceChangeHandler component, so it won't be notified of changes",
+                    res_changed.entity,
+                    std::any::type_name::<R>()
+                );
+                return;
+            };
+
+            commands.run_system_with(&handler.0, res_changed.entity);
+        }
+
+        let mut commands = world.commands();
+
+        commands.entity(ctx.entity).observe(run_handler::<R>);
     }
 }
 
@@ -98,7 +130,19 @@ impl<R: Resource> SubscribeTo<R> {
 ///
 /// The system should have an [`Entity`] as input, which is the entity context of the subscriber.
 #[derive(Component, FromTemplate)]
+#[component(on_add)]
 pub struct ResourceChangeHandler(pub SystemHandle<In<Entity>, ()>);
+
+impl ResourceChangeHandler {
+    fn on_add(mut world: DeferredWorld, ctx: HookContext) {
+        let Some(handler) = world.get::<ResourceChangeHandler>(ctx.entity) else {
+            return;
+        };
+
+        let handler = handler.0.clone();
+        world.commands().run_system_with(&handler, ctx.entity);
+    }
+}
 
 /// Returns a [`SubscribeToTemplate`] which allows you to subscribe to changes of a resource.
 ///
@@ -117,34 +161,9 @@ impl<R: Resource> Template for SubscribeToTemplate<R> {
         &self,
         context: &mut bevy::ecs::template::TemplateContext,
     ) -> Result<Self::Output> {
-        fn run_handler<R: Resource>(
-            res_changed: On<ResourceChanged<R>>,
-            mut commands: Commands,
-            q_h: Query<&ResourceChangeHandler>,
-        ) {
-            let Ok(handler) = q_h.get(res_changed.entity) else {
-                warn!(
-                    "Entity {:?} is subscribing to changes of resource {:?} but doesn't have a ResourceChangeHandler component, so it won't be notified of changes",
-                    res_changed.entity,
-                    std::any::type_name::<R>()
-                );
-                return;
-            };
+        let sub = context.entity.world_scope(SubscribeTo::<R>::from_world);
 
-            commands.run_system_with(&handler.0, res_changed.entity);
-        }
-
-        context.entity.observe(run_handler::<R>);
-
-        let id = context.entity.id();
-        context.entity.world_scope(|world| {
-            let rid = world.init_resource::<ResourceSubscribe<R>>();
-            let subscribe_entity = world.resource_entities().get(rid).unwrap();
-            world
-                .entity_mut(id)
-                .insert(SubscribeTo::<R>::new(subscribe_entity));
-        });
-
+        context.entity.insert(sub);
         Ok(())
     }
 

@@ -20,7 +20,7 @@ use bevy::{
     scene::{Scene, bsn, template_value},
     state::{state::States, state_scoped::DespawnOnExit},
     ui::{Node, percent},
-    ui_widgets::{Slider, SliderRange, SliderThumb, SliderValue, TrackClick},
+    ui_widgets::{Button, Slider, SliderRange, SliderThumb, SliderValue, TrackClick},
 };
 pub use options::*;
 pub use title::*;
@@ -40,10 +40,14 @@ pub fn ui_root() -> impl Scene {
     }
 }
 
+pub fn despawn_on_exit<S: States>(state: S) -> DespawnOnExit<S> {
+    DespawnOnExit(state)
+}
+
 pub fn ui_root_despawn_on_exit<S: States + Default + Clone + Unpin>(state: S) -> impl Scene {
     bsn! {
-        ui_root()
-        template_value(DespawnOnExit(state))
+        @ui_root()
+        DespawnOnExit<S>(state)
     }
 }
 
@@ -86,7 +90,7 @@ pub struct GroupFocused(pub bool);
 pub struct Callback(SystemHandle);
 
 pub fn press_trigger_callback(
-    ev: On<Pointer<Press>>,
+    ev: On<PointerPress>,
     mut command: Commands,
     buttons: Query<&Callback>,
 ) {
@@ -113,7 +117,7 @@ struct RespondFocusChange {
 }
 
 fn pointer_focus_control(
-    ev: On<Pointer<Enter>>,
+    ev: On<PointerEnter>,
     focusables: Query<(Entity, &InFocusGroup)>,
     mut commands: Commands,
 ) {
@@ -225,7 +229,7 @@ impl Default for StyledSliderProps {
             caption: "Slider".to_string(),
             slider_modifiers: Box::new(bsn! {
 
-                                       }),
+            }),
             resource_change_handler: system_value(|_entity: In<Entity>| {}),
         }
     }
@@ -253,10 +257,12 @@ impl StyledSlider {
             ImageNode {
                 image: "images/panel-background.png",
                 image_mode: NodeImageMode::Sliced(slicer),
-                texture_atlas: { TextureAtlasTemplate {
-                    layout: asset_value(texture_atlas),
-                    index: 1,
-                } },
+                texture_atlas: {
+                    TextureAtlasTemplate {
+                        layout: asset_value(texture_atlas),
+                        index: 1,
+                    }
+                },
             }
             on(pointer_focus_control)
             UiGreyout {
@@ -270,33 +276,30 @@ impl StyledSlider {
                     });
             })
             Children [
-                (
-                    Node {
-                        align_self: AlignSelf::FlexStart,
+                Node {
+                    align_self: AlignSelf::FlexStart,
+                }
+                Text::new(props.caption)
+                @font_04B_30(px(80.0))
+                --
+                Node {
+                    width: percent(100),
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Row,
+                    justify_items: JustifyItems::Stretch,
+                }
+                Children [
+                    @slider_knot(KnotPosition::Left, "OFF".to_string(), px(35.0))
+                    --
+                    @slider_ui()
+                    ~Node {
+                        flex_grow: 1.0,
                     }
-                    Text::new(props.caption)
-                    font_04B_30(px(80.0))
-                ),
-                (
-                    Node {
-                        width: percent(100),
-                        display: Display::Flex,
-                        flex_direction: FlexDirection::Row,
-                        justify_items: JustifyItems::Stretch,
-                    }
-                    Children [
-                        slider_knot(KnotPosition::Left, "OFF".to_string(), px(35.0)),
-                        (
-                            slider_ui()
-                            ~Node {
-                                flex_grow: 1.0,
-                            }
-                            { props.slider_modifiers }
-                            ResourceChangeHandler({ props.resource_change_handler })
-                        ),
-                        slider_knot(KnotPosition::Right, "MAX".to_string(), px(35.0)),
-                    ]
-                ),
+                    @{ props.slider_modifiers }
+                    ResourceChangeHandler({ props.resource_change_handler })
+                    --
+                    @slider_knot(KnotPosition::Right, "MAX".to_string(), px(35.0))
+                ]
             ]
         }
     }
@@ -323,32 +326,36 @@ fn slider_knot(position: KnotPosition, text: String, font_size: Val) -> impl Sce
         }
         ImageNode {
             image: "images/slider.png",
-            image_mode: NodeImageMode::Sliced({ TextureSlicer {
-                border: BorderRect::axes(6.0, 6.0),
-                max_corner_scale: 4.0,
-                ..default()
-            } }),
-            texture_atlas: { TextureAtlasTemplate {
-                layout: asset_value(
-                    TextureAtlasLayout::from_grid(
-                        UVec2::new(12, 10),
-                        2,
-                        2,
-                        Some(UVec2::new(1, 1)),
-                        None,
+            image_mode: NodeImageMode::Sliced({
+                TextureSlicer {
+                    border: BorderRect::axes(6.0, 6.0),
+                    max_corner_scale: 4.0,
+                    ..default()
+                }
+            }),
+            texture_atlas: {
+                TextureAtlasTemplate {
+                    layout: asset_value(
+                        TextureAtlasLayout::from_grid(
+                            UVec2::new(12, 10),
+                            2,
+                            2,
+                            Some(UVec2::new(1, 1)),
+                            None,
+                        ),
                     ),
-                ),
-                index: altas_index,
-            } },
+                    index: altas_index,
+                }
+            },
         }
-        Children [(
+        Children [
             ~Node {
                 margin: { text_margin },
             }
             Text::new(text)
             TextColor(Color::srgb_u32(0x465682))
-            font_04B_30(font_size)
-        )]
+            @font_04B_30(font_size)
+        ]
     }
 }
 
@@ -370,7 +377,7 @@ pub fn slider_ui() -> impl Scene {
         }
         SliderValue(100.0)
         SliderRange::new(0.0, 100.0)
-        Children [(
+        Children [
             Node {
                 display: Display::Flex,
                 position_type: PositionType::Absolute,
@@ -384,31 +391,28 @@ pub fn slider_ui() -> impl Scene {
             }
             BorderColor::from(Color::srgb_u32(0x465682))
             Children [
-                (
-                    Node {
-                        display: Display::Flex,
-                        width: px(12),
-                        height: percent(100),
-                        position_type: PositionType::Absolute,
-                        left: percent(0),
-                        border_radius: BorderRadius::MAX,
-                    }
-                    SliderThumb
-                ),
-                (
-                    ThumbOfSlider(#Slider)
-                    Node {
-                        display: Display::Flex,
-                        width: percent(100),
-                        height: percent(100),
-                        position_type: PositionType::Absolute,
-                        left: px(0),
-                        right: px(0),
-                    }
-                    BackgroundColor(Color::WHITE)
-                ),
+                Node {
+                    display: Display::Flex,
+                    width: px(12),
+                    height: percent(100),
+                    position_type: PositionType::Absolute,
+                    left: percent(0),
+                    border_radius: BorderRadius::MAX,
+                }
+                SliderThumb
+                --
+                ThumbOfSlider(#Slider)
+                Node {
+                    display: Display::Flex,
+                    width: percent(100),
+                    height: percent(100),
+                    position_type: PositionType::Absolute,
+                    left: px(0),
+                    right: px(0),
+                }
+                BackgroundColor(Color::WHITE)
             ]
-        )]
+        ]
     }
 }
 
@@ -476,14 +480,14 @@ impl StyledButton {
             ImageNode {
                 image: "images/button.png",
                 image_mode: NodeImageMode::Sliced(slicer),
-                texture_atlas: { TextureAtlasTemplate {
-                    layout: asset_value(texture_atlas),
-                    index: 0,
-                } },
+                texture_atlas: {
+                    TextureAtlasTemplate {
+                        layout: asset_value(texture_atlas),
+                        index: 0,
+                    }
+                },
             }
-            template_value(FrameAnimationSet::<
-                ButtonAnimation,
-            >::new(ButtonAnimation::Default, animations.clone()))
+            FrameAnimationSet::<ButtonAnimation>::new(ButtonAnimation::Default, animations.clone())
             on(pointer_focus_control)
             on(switch_button_focus_animation)
             on(press_trigger_callback)
@@ -495,7 +499,7 @@ impl StyledButton {
                 justify_items: JustifyItems::Center,
             }
             Children [
-                { props.caption },
+                { props.caption }
             ]
         }
     }
@@ -508,8 +512,8 @@ impl Default for StyledButtonProps {
     fn default() -> Self {
         Self {
             caption: Box::new(bsn! {
-                                  Text::new("Button")
-                              }),
+                Text::new("Button")
+            }),
             callback: system_value(|| {}),
         }
     }

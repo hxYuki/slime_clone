@@ -1,4 +1,4 @@
-import super::fullscreen_vertex_output::FullscreenVertexOutput;
+import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput;
 
 struct RegionColorScreenMaterial {
     rects: array<vec4<f32>, 32>,

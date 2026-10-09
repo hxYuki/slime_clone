@@ -19,7 +19,7 @@ pub(super) fn plugin(app: &mut App) {
             ),
         )
         .add_observer(
-            |ev: On<Add, AudioSink>,
+            |ev: On<Add<AudioSink>>,
              global_volume: Res<GlobalVolume>,
              channel_volume: Res<ChannelVolume>,
              mut q_sfx: Query<

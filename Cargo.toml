@@ -6,15 +6,7 @@ edition = "2024"
 
 [dependencies]
 # Use only features needed for a 2D game to improve compile time and size
-bevy = { git = "https://github.com/hxYuki/bevy", rev = "31317bf43a106b4ccc80331de688f1885925b6c1", default-features = false, features = [
-    "2d",
-    "audio-all-formats",
-    "ui",
-    "shader_format_wesl",
-    "bevy_settings",
-] }
-# bevy = {path="../bevy", default-features = false, features = ["2d","audio-all-formats", "ui", "shader_format_wesl", "bevy_settings"] }
-# bevy = { version = "0.19.0", default-features = false, features = ["2d","audio-all-formats", "ui", "shader_format_wesl", "bevy_settings"] }
+bevy = { version = "0.20.0", default-features = false, features = ["2d","audio-all-formats", "ui", "bevy_settings"] }
 inventory = "0.3"
 rand = "0.9"
 # Compile out low-severity logs to improve performance.
@@ -49,6 +41,16 @@ dev_native = [
     "bevy/asset_processor",
 ]
 
+[package.metadata.wgsl-analyzer]
+edition = "2026_pre"
+root = "assets/shaders"
+
+[package.metadata.wgsl-analyzer.dependencies]
+bevy_render = { path = "../bevy/crates/bevy_render" }
+bevy_pbr = { path = "../bevy/crates/bevy_pbr" }
+bevy_core_pipeline = { path = "../bevy/crates/bevy_core_pipeline" }
+bevy_sprite_render = { path = "../bevy/crates/bevy_sprite_render" }
+bevy_ui_render = { path = "../bevy/crates/bevy_ui_render" }
 
 [package.metadata.bevy_cli.release]
 # Disable dev features for release builds.

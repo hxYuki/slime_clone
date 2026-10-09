@@ -95,9 +95,9 @@ fn spawn_camera(mut command: Commands) {
 }
 
 pub fn change_state_to_game(mut next_state: ResMut<NextState<AppState>>) {
-    NextState::set_if_neq(&mut next_state, AppState::Game);
+    next_state.set_if_different(AppState::Game);
 }
 
 pub fn change_state_to_title(mut next_state: ResMut<NextState<AppState>>) {
-    NextState::set_if_neq(&mut next_state, AppState::Title);
+    next_state.set_if_different(AppState::Title);
 }

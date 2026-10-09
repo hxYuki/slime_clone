@@ -133,21 +133,23 @@ fn pause_menu() -> impl Scene {
         TextureAtlasLayout::from_grid(UVec2::new(15, 15), 1, 3, Some(UVec2::new(0, 1)), None);
 
     bsn! {
-        ui_root_despawn_on_exit(GamePause::Paused)
+        @ui_root_despawn_on_exit(GamePause::Paused)
         ~Node {
             display: Display::Flex,
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
         }
-        Children [(
+        Children [
             ImageNode {
                 image: "images/panel-background.png",
                 image_mode: NodeImageMode::Sliced(slicer),
-                texture_atlas: { TextureAtlasTemplate {
-                    layout: asset_value(texture_atlas),
-                    index: 1,
-                } },
+                texture_atlas: {
+                    TextureAtlasTemplate {
+                        layout: asset_value(texture_atlas),
+                        index: 1,
+                    }
+                },
             }
             Node {
                 width: percent(80),
@@ -155,54 +157,44 @@ fn pause_menu() -> impl Scene {
                 flex_direction: FlexDirection::Column,
             }
             Children [
-                (
-                    Text::new("PAUSED")
-                    font_04B_30(px(80.0))
-                    Node {
-                        margin: UiRect::axes(px(40), px(20)),
+                Text::new("PAUSED")
+                @font_04B_30(px(80.0))
+                Node {
+                    margin: UiRect::axes(px(40), px(20)),
+                }
+                --
+                #PauseGroup
+                Node {
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    margin: UiRect::axes(px(40), px(20)),
+                }
+                Children [
+                    @StyledButton {
+                        @caption: bsn! {
+                            Text::new("RESUME")
+                            @button_text_style()
+                        },
+                        @callback: system_value(|mut commands: Commands| {
+                            commands.run_system_cached(toggle_pause);
+                        }),
                     }
-                ),
-                (
-                    #PauseGroup
-                    Node {
-                        display: Display::Flex,
-                        flex_direction: FlexDirection::Row,
-                        justify_content: JustifyContent::SpaceBetween,
-                        margin: UiRect::axes(px(40), px(20)),
+                    InFocusGroup(#PauseGroup)
+                    --
+                    @StyledButton {
+                        @caption: bsn! {
+                            Text::new("QUIT")
+                            @button_text_style()
+                        },
+                        @callback: system_value(|mut commands: Commands| {
+                            commands.run_system_cached(change_state_to_title);
+                        }),
                     }
-                    Children [
-                        (
-                            @StyledButton {
-                                @caption: {
-                                    bsn! {
-                                        Text::new("RESUME")
-                                        button_text_style()
-                                    }
-                                },
-                                @callback: system_value(|mut commands: Commands| {
-                                    commands.run_system_cached(toggle_pause);
-                                }),
-                            }
-                            InFocusGroup(#PauseGroup)
-                        ),
-                        (
-                            @StyledButton {
-                                @caption: {
-                                    bsn! {
-                                        Text::new("QUIT")
-                                        button_text_style()
-                                    }
-                                },
-                                @callback: system_value(|mut commands: Commands| {
-                                    commands.run_system_cached(change_state_to_title);
-                                }),
-                            }
-                            InFocusGroup(#PauseGroup)
-                        ),
-                    ]
-                ),
+                    InFocusGroup(#PauseGroup)
+                ]
             ]
-        )]
+        ]
     }
 }
 
@@ -318,9 +310,9 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
     ));
 
     commands.spawn_scene(bsn! {
-                             ui_root_despawn_on_exit(AppState::Game)
-                             Children [score_text()]
-                         });
+        @ui_root_despawn_on_exit(AppState::Game)
+        Children [@score_text()]
+    });
 
     // commands.spawn((
     //     room.bundle(),
@@ -328,10 +320,10 @@ fn setup_game(mut commands: Commands, level: Res<LevelAssets>) {
     //     Transform::from_scale(Vec3::splat(1.0)),
     // ));
     commands.spawn_scene(bsn! {
-                             room()
-                             template_value(DespawnOnExit(AppState::Game))
-                             Transform::from_scale(Vec3::splat(1.0))
-                         });
+        @room()
+        DespawnOnExit<AppState>(AppState::Game)
+        Transform::from_scale(Vec3::splat(1.0))
+    });
     commands
         .spawn((
             slime.bundle(),
@@ -375,7 +367,7 @@ fn score_text() -> impl Scene {
                 ..default()
             })
         })
-        Children [(
+        Children [
             ScoreText
             TextSpan::new("0")
             template(|context| {
@@ -385,7 +377,7 @@ fn score_text() -> impl Scene {
                     ..default()
                 })
             })
-        )]
+        ]
     }
 }
 

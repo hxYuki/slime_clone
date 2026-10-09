@@ -1,3 +1,5 @@
+use bevy::render::RenderApp;
+
 use super::fullscreen_matertial_prelude::*;
 
 pub fn plugins(app: &mut App) {
@@ -5,6 +7,7 @@ pub fn plugins(app: &mut App) {
 }
 
 #[derive(Component, Clone, Copy, Default, ExtractComponent, ShaderType)]
+#[extract_app(RenderApp)]
 pub struct SaturateOutScreenMaterial {
     pub saturation: f32,
     _padding: Vec3,

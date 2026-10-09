@@ -3,12 +3,11 @@ use bevy::prelude::*;
 use crate::{
     AppState,
     audio::music,
-    ui::{self, options_ui, ui_root_despawn_on_exit},
+    ui::{self, despawn_on_exit, options_ui, ui_root_despawn_on_exit},
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, SubStates, Default)]
 #[source(AppState = AppState::Title)]
-#[states(scoped_entities)]
 pub enum TitleState {
     #[default]
     Main,
@@ -29,33 +28,28 @@ pub fn plugin(app: &mut App) {
 }
 
 fn setup_title(mut command: Commands) {
-    command.spawn_scene_list(bsn_list! [
-                                 (
-                                     ui_root_despawn_on_exit(TitleState::Main)
-                                     Children [ui::title_ui()]
-                                 ),
-                             ]);
+    command.spawn_scene_list(bsn_list! {
+        @ui_root_despawn_on_exit(TitleState::Main)
+        Children [@ui::title_ui()]
+    });
 }
 
 fn title_background() -> impl SceneList {
-    bsn_list! [
-        (
-            Sprite {
-                image: "images/background-pattern.png",
-                image_mode: SpriteImageMode::Tiled {
-                    tile_x: true,
-                    tile_y: true,
-                    stretch_value: 0.25,
-                },
-            }
-            AnimatedBackground
-            template_value(DespawnOnExit(AppState::Title))
-        ),
-        (
-            music("audio/music/theme.ogg")
-            template_value(DespawnOnExit(AppState::Title))
-        ),
-    ]
+    bsn_list! {
+        Sprite {
+            image: "images/background-pattern.png",
+            image_mode: SpriteImageMode::Tiled {
+                tile_x: true,
+                tile_y: true,
+                stretch_value: 0.25,
+            },
+        }
+        AnimatedBackground
+        despawn_on_exit(AppState::Title)
+        --
+        @music("audio/music/theme.ogg")
+        despawn_on_exit(AppState::Title)
+    }
 }
 
 pub fn change_title_state_to_main(mut next_state: ResMut<NextState<TitleState>>) {

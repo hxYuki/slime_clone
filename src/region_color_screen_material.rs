@@ -4,7 +4,7 @@ use bevy::{
         fullscreen_material::{FullscreenMaterial, FullscreenMaterialPlugin},
     },
     prelude::*,
-    render::{extract_component::ExtractComponent, render_resource::ShaderType},
+    render::{RenderApp, extract_component::ExtractComponent, render_resource::ShaderType},
     shader::ShaderRef,
     ui::{
         ComputedNode, ComputedUiRenderTargetInfo, ComputedUiTargetCamera, UiGlobalTransform,
@@ -133,6 +133,7 @@ impl Default for RegionColor {
 }
 
 #[derive(Component, Clone, Copy, Default, ExtractComponent, ShaderType)]
+#[extract_app(RenderApp)]
 pub struct RegionColorScreenMaterial {
     rects: [Vec4; MAX_GREYOUT_RECTS],
     color: Vec4,
