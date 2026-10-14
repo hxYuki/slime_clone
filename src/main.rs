@@ -6,6 +6,7 @@ mod material;
 mod region_color_screen_material;
 mod resource_notify;
 mod sprite_animation;
+mod state_match;
 mod title;
 mod ui;
 
