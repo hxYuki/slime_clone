@@ -33,6 +33,8 @@ use crate::{
 
 pub fn ui_root() -> impl Scene {
     bsn! {
+        // GhostNode children also participate in spatial transform propagation.
+        Transform
         Node {
             width: percent(100.0),
             height: percent(100.0),

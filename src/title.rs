@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use crate::{
     AppState,
     audio::music,
+    state_match::matches,
     ui::{self, despawn_on_exit, options_ui, ui_root_despawn_on_exit},
 };
 
@@ -18,8 +19,7 @@ pub fn plugin(app: &mut App) {
     app.add_sub_state::<TitleState>();
 
     app.add_systems(OnEnter(AppState::Title), title_background.spawn());
-    app.add_systems(OnEnter(TitleState::Main), setup_title);
-    app.add_systems(OnEnter(TitleState::Option), options_ui.spawn());
+    app.add_systems(OnEnter(AppState::Title), title_screens.spawn());
 
     app.add_systems(
         Update,
@@ -27,11 +27,15 @@ pub fn plugin(app: &mut App) {
     );
 }
 
-fn setup_title(mut command: Commands) {
-    command.spawn_scene_list(bsn_list! {
-        @ui_root_despawn_on_exit(TitleState::Main)
-        Children [@ui::title_ui()]
-    });
+fn title_screens() -> impl Scene {
+    bsn! {
+        @ui_root_despawn_on_exit(AppState::Title)
+        Children [
+            @matches(TitleState::Main, ui::title_ui)
+            --
+            @matches(TitleState::Option, options_ui)
+        ]
+    }
 }
 
 fn title_background() -> impl SceneList {
@@ -79,4 +83,48 @@ fn animated_background(
 
         sprite.custom_size = Some(image_size);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::{asset::AssetPlugin, scene::ScenePlugin, transform::TransformPlugin};
+
+    #[test]
+    fn title_screen_transform_hierarchy_is_complete() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin {
+                watch_for_changes_override: Some(false),
+                use_asset_processor_override: Some(false),
+                ..default()
+            },
+            ScenePlugin,
+            TransformPlugin,
+        ));
+        let root = app.world_mut().spawn_scene(title_screens()).unwrap().id();
+        app.world_mut().flush();
+
+        let world = app.world_mut();
+        let mut query = world.query_filtered::<(Entity, &ChildOf), With<GlobalTransform>>();
+        let invalid: Vec<_> = query
+            .iter(world)
+            .filter(|(_, parent)| world.get::<GlobalTransform>(parent.parent()).is_none())
+            .map(|(entity, parent)| {
+                (
+                    entity,
+                    parent.parent(),
+                    world
+                        .get::<bevy::ui::experimental::GhostNode>(entity)
+                        .is_some(),
+                    world.get::<Node>(parent.parent()).is_some(),
+                )
+            })
+            .collect();
+        assert!(
+            invalid.is_empty(),
+            "B0004: root={root:?}; (child, parent, child is GhostNode, parent is Node): {invalid:?}"
+        );
+    }
 }
